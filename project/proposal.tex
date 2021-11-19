@@ -1,0 +1,30 @@
+\documentclass[a4paper]{article}
+
+
+\usepackage[american]{babel}
+\usepackage{amssymb}
+
+\usepackage{amsmath}
+
+
+\title{Folly: an automatic, real-time flying object locator}
+\subtitle{}
+\author{{Henk Oordt} \hfill\\ 
+{1717510} \hfill}
+
+\section{Introduction}
+Project 'Folly' is aimed at the design and construction of a real-time flying object locator. Folly uses audio analysis to detect and locate in 3D space sound-producing objects, such as flies and mosquitos, or speaking people. It then aims a laser pointer in the direction of the sound's origin. 'Folly' only reacts to certain pre-programmed sounds, and thus is able to filter out noise and entities that are not deemed interesting.
+
+In order to locate a sound's origin, it samples audio signal from multiple analog microphones. The signals are analyzed in order to calculate a Time Difference Of Arrival (TDOA), which, along with the known microphone setup, can be used to calculate the longitudinal and lateral angle of the origin with respect to the device.
+
+The microphone array as well as the laser pointer is mounted to a pan-tilt bracket, which is being used to point the microphones and the laser pointer in the derection of the origin of the sound.
+
+On top of this, the rate of change in power of the sound of interest as the microphones are panned and tilted is used as an additional heuristic with which the estimate of the location can be improved.
+
+All of this runs on a nRF52840 microcontroller, for which firmware is to be customly developed. This microcontroller is able to sample up to 8 analog inputs, and can control the pan-tilt bracket's servo motors using pulse-width modulation.
+
+\section{Goals}
+
+\section{Challenges}
+
+\section{Deliverables}
