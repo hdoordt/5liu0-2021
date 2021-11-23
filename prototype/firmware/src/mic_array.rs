@@ -2,7 +2,7 @@ use core::marker::PhantomData;
 
 use embedded_hal::adc::Channel;
 use nrf52840_hal::{
-    pac::{saadc, SAADC},
+    pac::SAADC,
     ppi::ConfigurablePpi,
     saadc::SaadcConfig,
     timer::{Instance, Periodic},
@@ -11,67 +11,67 @@ use nrf52840_hal::{
 
 use self::saadc_buffer::SaadcBuffer;
 
-pub struct Pins<MIC1, MIC2, MIC3, MIC4>
+pub struct Pins<M1, M2, M3, M4>
 where
-    MIC1: Channel<Saadc, ID = u8>,
-    MIC2: Channel<Saadc, ID = u8>,
-    MIC3: Channel<Saadc, ID = u8>,
-    MIC4: Channel<Saadc, ID = u8>,
+    M1: Channel<Saadc, ID = u8>,
+    M2: Channel<Saadc, ID = u8>,
+    M3: Channel<Saadc, ID = u8>,
+    M4: Channel<Saadc, ID = u8>,
 {
-    pub mic1: MIC1,
-    pub mic2: MIC2,
-    pub mic3: MIC3,
-    pub mic4: MIC4,
+    pub mic1: M1,
+    pub mic2: M2,
+    pub mic3: M3,
+    pub mic4: M4,
 }
 
-impl<MIC1, MIC2, MIC3, MIC4> Pins<MIC1, MIC2, MIC3, MIC4>
+impl<M1, M2, M3, M4> Pins<M1, M2, M3, M4>
 where
-    MIC1: Channel<Saadc, ID = u8>,
-    MIC2: Channel<Saadc, ID = u8>,
-    MIC3: Channel<Saadc, ID = u8>,
-    MIC4: Channel<Saadc, ID = u8>,
+    M1: Channel<Saadc, ID = u8>,
+    M2: Channel<Saadc, ID = u8>,
+    M3: Channel<Saadc, ID = u8>,
+    M4: Channel<Saadc, ID = u8>,
 {
     fn channels(&self) -> [u8; 4] {
         [
-            <MIC1 as Channel<Saadc>>::channel(),
-            <MIC2 as Channel<Saadc>>::channel(),
-            <MIC3 as Channel<Saadc>>::channel(),
-            <MIC4 as Channel<Saadc>>::channel(),
+            <M1 as Channel<Saadc>>::channel(),
+            <M2 as Channel<Saadc>>::channel(),
+            <M3 as Channel<Saadc>>::channel(),
+            <M4 as Channel<Saadc>>::channel(),
         ]
     }
 }
 
 type RawSample = [i16; 4];
 
-pub struct MicArray<MIC1, MIC2, MIC3, MIC4, TIM, PPICH>
+pub struct MicArray<M1, M2, M3, M4, T, P>
 where
-    MIC1: Channel<Saadc, ID = u8>,
-    MIC2: Channel<Saadc, ID = u8>,
-    MIC3: Channel<Saadc, ID = u8>,
-    MIC4: Channel<Saadc, ID = u8>,
+    M1: Channel<Saadc, ID = u8>,
+    M2: Channel<Saadc, ID = u8>,
+    M3: Channel<Saadc, ID = u8>,
+    M4: Channel<Saadc, ID = u8>,
 {
     saadc: SAADC,
-    pins: Pins<MIC1, MIC2, MIC3, MIC4>,
+    pins: Pins<M1, M2, M3, M4>,
     buffer: SaadcBuffer,
-    timer: TIM,
-    ppi_channel: PPICH,
+    timer: T,
+    ppi_channel: PhantomData<P>,
 }
 
-impl<MIC1, MIC2, MIC3, MIC4, TIM, PPICH> MicArray<MIC1, MIC2, MIC3, MIC4, TIM, PPICH>
+impl<M1, M2, M3, M4, T, P> MicArray<M1, M2, M3, M4, T, P>
 where
-    MIC1: Channel<Saadc, ID = u8>,
-    MIC2: Channel<Saadc, ID = u8>,
-    MIC3: Channel<Saadc, ID = u8>,
-    MIC4: Channel<Saadc, ID = u8>,
-    TIM: Instance,
-    PPICH: ConfigurablePpi,
+    M1: Channel<Saadc, ID = u8>,
+    M2: Channel<Saadc, ID = u8>,
+    M3: Channel<Saadc, ID = u8>,
+    M4: Channel<Saadc, ID = u8>,
+    T: Instance,
+    P: ConfigurablePpi,
 {
     pub fn new(
         saadc: SAADC,
-        pins: Pins<MIC1, MIC2, MIC3, MIC4>,
+        pins: Pins<M1, M2, M3, M4>,
         config: SaadcConfig,
-        mut timer: Timer<TIM, Periodic>,
-        mut ppi_channel: PPICH,
+        timer: Timer<T, Periodic>,
+        mut ppi_channel: P,
     ) -> Self {
         let buffer = SaadcBuffer::take().expect("SaadcBuffer is already taken");
 
@@ -125,7 +125,6 @@ where
 
         saadc.intenset.write(|w| w.resultdone().set_bit());
 
-
         // Calibrate
         saadc.events_calibratedone.reset();
         saadc.tasks_calibrateoffset.write(|w| unsafe { w.bits(1) });
@@ -136,7 +135,7 @@ where
             pins,
             buffer,
             timer,
-            ppi_channel,
+            ppi_channel: PhantomData,
         }
     }
 
@@ -149,11 +148,17 @@ where
     }
 
     pub fn start_sampling_task(&mut self) {
-        self.timer.as_timer0().tasks_start.write(|w| w.tasks_start().set_bit());
+        self.timer
+            .as_timer0()
+            .tasks_start
+            .write(|w| w.tasks_start().set_bit());
     }
 
     pub fn stop_sampling_task(&mut self) {
-        self.timer.as_timer0().tasks_stop.write(|w| w.tasks_stop().set_bit());
+        self.timer
+            .as_timer0()
+            .tasks_stop
+            .write(|w| w.tasks_stop().set_bit());
     }
 }
 
