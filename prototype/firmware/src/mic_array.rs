@@ -141,7 +141,7 @@ where
     }
 
     pub fn clear_interrupt(&mut self) {
-        self.saadc.intenset.write(|w| w.resultdone().set_bit());
+        self.saadc.events_resultdone.reset();
     }
 
     pub fn sample_raw() -> RawSample {
