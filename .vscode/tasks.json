@@ -1,0 +1,21 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "cargo-build:firmware",
+            "type": "shell",
+            "command": "/bin/bash",
+            "args": [
+                "-c",
+                "DEFMT_LOG=debug cargo build -p folley-firmware && scripts/rtt_block.sh folley-firmware",
+            ],
+            "problemMatcher": [
+                "$rustc"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
+        }
+    ],
+}
