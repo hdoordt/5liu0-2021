@@ -92,7 +92,8 @@ where
             .write(|w| w.oversample().variant(oversample));
         saadc.samplerate.write(|w| w.mode().task());
 
-        for chan in pins.channels().map(|ch| ch as usize) {
+        for (chan, &ain_id) in pins.channels().iter().enumerate() {
+            defmt::debug!("Configuring channel {} for AIN{}", chan, ain_id);
             saadc.ch[chan].config.write(|w| {
                 w.refsel().variant(reference);
                 w.gain().variant(gain);
@@ -103,9 +104,13 @@ where
                 w.burst().enabled();
                 w
             });
+            assert!((1..=8).contains(&ain_id));
+            saadc.ch[chan]
+                .pselp
+                .write(|w| unsafe { w.pselp().bits(ain_id) });
             saadc.ch[chan].pseln.write(|w| w.pseln().nc());
         }
-        
+
         // Set up DMA
         let buffer_slice = buffer.as_slice();
         saadc
@@ -125,12 +130,18 @@ where
         ppi_channel.set_event_endpoint(&timer_block.events_compare[0]);
         ppi_channel.enable();
 
-        saadc.intenset.write(|w| w.resultdone().set_bit());
+        todo!("Fix interrupt stuff");
+        saadc.intenset.write(|w| w.end().set_bit());
 
         // Calibrate
         saadc.events_calibratedone.reset();
         saadc.tasks_calibrateoffset.write(|w| unsafe { w.bits(1) });
-        while saadc.events_calibratedone.read().events_calibratedone().bit_is_clear() {}
+        while saadc
+            .events_calibratedone
+            .read()
+            .events_calibratedone()
+            .bit_is_clear()
+        {}
 
         Self {
             saadc,
@@ -142,11 +153,11 @@ where
     }
 
     pub fn clear_interrupt(&mut self) {
-        self.saadc.events_resultdone.reset();
+        self.saadc.events_end.reset();
     }
 
-    pub fn sample_raw() -> RawSample {
-        todo!();
+    pub fn sample_raw(&self) -> () {
+        defmt::debug!("Samples: {:?}", self.buffer.as_slice())
     }
 
     pub fn start_sampling_task(&mut self) {

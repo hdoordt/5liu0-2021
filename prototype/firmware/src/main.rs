@@ -4,7 +4,11 @@
 use folley_firmware as firmware;
 use nrf52840_hal as hal;
 
-use firmware::{mic_array::{self, MicArray, Pins as MicArrayPins}, pan_tilt::PanTilt, uarte::{Baudrate, Parity, Pins as UartePins, Uarte}};
+use firmware::{
+    mic_array::{MicArray, Pins as MicArrayPins},
+    pan_tilt::PanTilt,
+    uarte::{Baudrate, Parity, Pins as UartePins, Uarte},
+};
 
 #[allow(unused_imports)]
 use hal::prelude::*;
@@ -18,8 +22,7 @@ use hal::{
     },
     pac::{TIMER0, TIMER1, TWIM0, UARTE0},
     ppi::{self, Ppi0, Ppi1},
-    saadc::SaadcConfig,
-    timer::Periodic,
+    saadc::{Oversample, SaadcConfig},
     twim::Pins as TwimPins,
     Timer, Twim,
 };
@@ -99,11 +102,12 @@ const APP: () = {
             mic4: port0.p0_29,
         };
         let saadc_config = SaadcConfig {
+            oversample: Oversample::BYPASS,
             ..SaadcConfig::default()
         };
 
         let mut timer1 = Timer::periodic(ctx.device.TIMER1);
-        timer1.start(3_000_000u32);
+        timer1.start(10_000u32);
 
         let mut mic_array =
             MicArray::new(ctx.device.SAADC, mic_pins, saadc_config, timer1, ppi.ppi1);
@@ -117,6 +121,8 @@ const APP: () = {
 
         pan_tilt.pan_deg(pan_tilt_status.pan_deg);
         pan_tilt.tilt_deg(pan_tilt_status.tilt_deg);
+
+        mic_array.start_sampling_task();
 
         init::LateResources {
             uarte0,
@@ -148,19 +154,19 @@ const APP: () = {
         } = msg;
 
         if let Some(deg) = pan_degrees {
-            defmt::println!("Pan to {} degrees", deg);
+            defmt::debug!("Pan to {} degrees", deg);
             pan_tilt_status.pan_deg = deg;
             pan_tilt.pan_deg(deg);
         }
         if let Some(deg) = tilt_degrees {
-            defmt::println!("Tilt to {} degrees", deg);
+            defmt::debug!("Tilt to {} degrees", deg);
             pan_tilt_status.tilt_deg = deg;
             pan_tilt.tilt_deg(deg);
         }
         match set_sampling_enabled {
             Some(true) => mic_array.lock(|m| m.start_sampling_task()),
             Some(false) => mic_array.lock(|m| m.stop_sampling_task()),
-            None => {},
+            None => {}
         }
 
         ctx.spawn
@@ -201,7 +207,7 @@ const APP: () = {
     )]
     fn on_uarte0(mut ctx: on_uarte0::Context) {
         use firmware::uarte::UarteEvent::*;
-        defmt::debug!("Running task on_uarte0");
+        defmt::trace!("Running task on_uarte0");
 
         ctx.resources
             .uarte0
@@ -238,7 +244,7 @@ const APP: () = {
     fn on_saadc(ctx: on_saadc::Context) {
         let mic_array = ctx.resources.mic_array;
         mic_array.clear_interrupt();
-
+        mic_array.sample_raw();
         defmt::debug!("Sample ready!");
     }
 
