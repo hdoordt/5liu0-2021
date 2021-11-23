@@ -1,6 +1,16 @@
+# Rust
 book
 target
 
+# IDE and Debug output
 !.vscode
 .vscode/.cortex-debug*.state.json
 .vscode/*.gdb
+
+# LaTeX
+*.pdf
+*.gz
+*.aux
+*.log
+*.fls
+*.fdb_latexmk
