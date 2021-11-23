@@ -1,8 +1,8 @@
 [workspace]
 members = [
-    "prototypes/pan-tilt/firmware",
-    "prototypes/pan-tilt/format",
-    "prototypes/pan-tilt/cli",
+    "prototype/firmware",
+    "prototype/format",
+    "prototype/cli",
 ]
 
 

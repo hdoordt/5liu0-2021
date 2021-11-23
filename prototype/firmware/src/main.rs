@@ -1,11 +1,12 @@
 #![no_std]
 #![no_main]
 
-use nrf52840_hal as hal;
 use folley_firmware as firmware;
+use nrf52840_hal as hal;
 
 use firmware::{
-    pan_tilt::{self, PanTilt},
+    mic_array::{MicArray, Pins as MicArrayPins},
+    pan_tilt::PanTilt,
     uarte::{Baudrate, Parity, Pins as UartePins, Uarte},
 };
 
@@ -13,14 +14,19 @@ use firmware::{
 use hal::prelude::*;
 
 use embedded_hal::timer::CountDown;
+use folley_format::{device_to_server::PanTiltStatus, DeviceToServer, ServerToDevice};
 use hal::{
-    gpio::{p0::Parts, Level},
+    gpio::{
+        p0::{Parts, P0_03, P0_04, P0_28, P0_29},
+        Disconnected, Level,
+    },
     pac::{TIMER0, TIMER1, TWIM0, UARTE0},
+    ppi::{self, Ppi0},
+    saadc::SaadcConfig,
     timer::Periodic,
     twim::Pins as TwimPins,
     Timer, Twim,
 };
-use folley_format::{device_to_server::PanTiltStatus, DeviceToServer, ServerToDevice};
 use postcard::CobsAccumulator;
 use pwm_pca9685::Pca9685;
 
@@ -35,8 +41,15 @@ const APP: () = {
         accumulator: CobsAccumulator<32>,
         uarte0: Uarte<UARTE0>,
         timer0: Timer<TIMER0, Periodic>,
-        timer1: Timer<TIMER1, Periodic>,
         pan_tilt: PanTilt<Pca9685<Twim<TWIM0>>>,
+        mic_array: MicArray<
+            P0_03<Disconnected>,
+            P0_04<Disconnected>,
+            P0_28<Disconnected>,
+            P0_29<Disconnected>,
+            TIMER1,
+            Ppi0,
+        >,
     }
 
     // Initialize peripherals, before interrupts are unmasked
@@ -72,23 +85,34 @@ const APP: () = {
             Baudrate::BAUD115200,
         );
 
-        let scl = port0.p0_31.into_floating_input().degrade();
-        let sda = port0.p0_30.into_floating_input().degrade();
+        let scl = port0.p0_27.into_floating_input().degrade();
+        let sda = port0.p0_26.into_floating_input().degrade();
 
-        let pins = TwimPins { scl, sda };
+        let twim0_pins = TwimPins { scl, sda };
+        let mut pan_tilt = PanTilt::new(ctx.device.TWIM0, twim0_pins);
 
-        let mut pan_tilt = PanTilt::new(ctx.device.TWIM0, pins);
+        let ppi = ppi::Parts::new(ctx.device.PPI);
 
-        // A timer that is used to time-out UARTE0 read transactions,
-        // so the device can react to commands even if the
-        // UARTE0 RX FIFO is not yet full
-        let mut timer0 = Timer::periodic(ctx.device.TIMER0);
-        timer0.enable_interrupt();
-        timer0.start(500_000u32); // 100 ms
+        let mic_pins = MicArrayPins {
+            mic1: port0.p0_03,
+            mic2: port0.p0_04,
+            mic3: port0.p0_28,
+            mic4: port0.p0_29,
+        };
+        let saadc_config = SaadcConfig {
+            ..SaadcConfig::default()
+        };
 
         let mut timer1 = Timer::periodic(ctx.device.TIMER1);
         timer1.enable_interrupt();
         timer1.start(3_000_000u32);
+
+        let mut mic_array =
+            MicArray::new(ctx.device.SAADC, mic_pins, saadc_config, timer1, ppi.ppi0);
+
+        let mut timer0 = Timer::periodic(ctx.device.TIMER0);
+        timer0.enable_interrupt();
+        timer0.start(500_000u32); // 100 ms
 
         let accumulator = CobsAccumulator::new();
 
@@ -100,13 +124,15 @@ const APP: () = {
         pan_tilt.pan_deg(pan_tilt_status.pan_deg);
         pan_tilt.tilt_deg(pan_tilt_status.tilt_deg);
 
+        mic_array.start_sampling_task();
+
         init::LateResources {
             uarte0,
             timer0,
-            timer1,
             accumulator,
             pan_tilt,
             pan_tilt_status,
+            mic_array,
         }
     }
 
@@ -170,20 +196,6 @@ const APP: () = {
     }
 
     #[task(
-        binds = TIMER1,
-        priority = 9,
-        resources = [timer1, pan_tilt_status], spawn = [send_message],
-    )]
-    fn on_timer1(mut ctx: on_timer1::Context) {
-        let timer1 = ctx.resources.timer1;
-
-        if timer1.event_compare_cc0().read().bits() != 0x00u32 {
-            timer1.event_compare_cc0().write(|w| unsafe { w.bits(0) });
-            // TODO what do?
-        }
-    }
-
-    #[task(
         binds = TIMER0,
         priority = 99,
         resources = [timer0, uarte0],
@@ -243,6 +255,14 @@ const APP: () = {
                 .handle_message(data)
                 .expect("Could not start handle_message task, please increase its capacity."),
         }
+    }
+
+    #[task(binds = SAADC, priority = 255, resources = [mic_array])]
+    fn on_saadc(ctx: on_saadc::Context) {
+        let mic_array = ctx.resources.mic_array;
+        mic_array.clear_interrupt();
+
+        defmt::println!("Sample ready!");
     }
 
     // RTIC requires that unused interrupts are declared in an extern block when

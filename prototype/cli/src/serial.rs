@@ -1,4 +1,4 @@
-use pan_tilt_format as format;
+use folley_format as format;
 use std::io;
 
 use format::{DeviceToServer, ServerToDevice};

@@ -1,4 +1,4 @@
-use pan_tilt_format::ServerToDevice;
+use folley_format::ServerToDevice;
 
 #[derive(Debug)]
 pub enum Action {
