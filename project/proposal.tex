@@ -1,3 +1,6 @@
+
+    
+
 \documentclass[a4paper]{article}
 
 
@@ -5,31 +8,64 @@
 \usepackage{amssymb}
 
 \usepackage{amsmath}
+\usepackage{url}
 
+\begin{document}
 
-\title{Folly: an automatic, real-time flying object locator}
-\subtitle{}
-\author{{Henk Oordt} \hfill\\ 
+\title{{Folley: real-time sound origin locator} \\\large {Proposoal for the 5LIU0 DBL project}}
+\author{{Henk Oordt} \hfill
+\\
 {1717510} \hfill}
 
+\maketitle
+
 \section{Introduction}
-Project 'Folly' is aimed at the design and construction of a real-time flying object locator. Folly uses audio analysis to detect and locate in 3D space sound-producing objects, such as flies and mosquitos, or speaking people. It then aims a laser pointer in the direction of the sound's origin. 'Folly' only reacts to certain pre-programmed sounds, and thus is able to filter out noise and entities that are not deemed interesting.
+Project `Folley' is aimed at the design and construction of a real-time sound origin locator. Folley uses audio signal analysis to detect and locate in 3D space sound-producing objects, such as flies and mosquitos, or speech. It then aims a low-power laser pointer in the direction of the origin of the. Optionally, Folley only reacts to certain sounds such as those produced by mosquitos or flies, and is thus able to filter out noise and entities that are not deemed interesting. However, this functionality is deemed nice-to-have.
 
-In order to locate a sound's origin, it samples audio signal from multiple analog microphones. The signals are analyzed in order to calculate a Time Difference Of Arrival (TDOA), which, along with the known microphone setup, can be used to calculate the longitudinal and lateral angle of the origin with respect to the device.
+In order to locate a sound's origin, it samples audio signal from an array analog microphones. The signals are analyzed in order to calculate a time-delay-angle-of-arrival \cite{6327613}, which along with the known microphone setup, can be used to calculate the azimuth and altitude angles of the origin with respect to the microphone array of the device.
 
-The microphone array as well as the laser pointer is mounted to a pan-tilt bracket, which is being used to point the microphones and the laser pointer in the derection of the origin of the sound.
+The microphone array as well as the laser diode is mounted to a servo-powered pan-tilt bracket, which is being used to point the microphones and the laser diode in the direction of the origin of the sound. On top of this, the rate of change in power of the signal of interest as the microphones are panned and tilted is used as an additional heuristic with which the estimate of the location can be improved. All of this is controlled by a Nordic Semiconductor nRF52840 microcontroller \cite{nrf52840-dk}, for which firmware is to be customly written in Rust \cite{rust}. This microcontroller is able to sample up to 8 analog inputs, and can control the servo motors of the pan-tilt bracket using pulse-width modulation or PWM \cite{GULYAEV20161529}. The board can also easily be set up for serial communication over USB \cite{usb}.
 
-On top of this, the rate of change in power of the sound of interest as the microphones are panned and tilted is used as an additional heuristic with which the estimate of the location can be improved.
+In order to develop the analysis algorithms, a set of Matlab \cite{matlab} scripts is provided, which given the raw audio signal measurements, can calculate the azimuth and altitude angles of the sounds origin with respect to the microphone array, the rate of change in audio signal power, and optionally a discrimination between sounds. These scripts will be used to verify the analysis implementation in firmware.
 
-All of this runs on a nRF52840 microcontroller, for which firmware is to be customly developed. This microcontroller is able to sample up to 8 analog inputs, and can control the pan-tilt bracket's servo motors using pulse-width modulation.
+A command line application written in Rust that can communicate with the device and that converts raw microphone measurements to Matlab input files is to be developed as well.
 
 \section{Goals}
+\begin{itemize}
+    \item Build a simple device using a nRF52840 development board, multiple microphones with respective amplifiers, a servo-powered pan-tilt bracket, a PWM controller, a regulator and a laser diode. The device will consist of various breakout boards, connected with jumper wires. The laser diode and the microphones are mounted on the pan-tilt bracket.
+    \item Draw a circuit diagram, visualizing the way components are connected in the device.
+    \item Implement a firmware application, that is able to send raw microphone measurement data over UART\cite{uart} to a command line application running on a host computer.
+    \item Implement a command line application that can receive raw microphone measurements, and store them in a format that can be read by a Matlab application.
+    \item Implement a Matlab script that can read raw microphone measurements from a file written by the command line application, and calculate using time-delay-angle-of-arrival analysis the angle an incoming sound signal originated from with respect to the microphone array.
+    \item Implement a Matlab script that can read raw microphone measurements from a file written by the command line application, and calculate the power of the sound signal.
+    \item Add functionality to the firmware application that allows it to do the calculations as implemented in the Matlab scripts.
+    \item Add functionality to the firmware application that enables it to control a servo-powered pan-tilt bracket.
+    \item Add functionality to the firmware application that allows it to point the laser in the direction of the sounds origin, using the time-delay-angle-of-arrival analysis and the signal power analysis.
+    \item (Optional) Implement a Matlab script that can read raw microphone measurements from a file written by the command line application, analyze the waveform, and can decide whether or not it originated from a flying insect or speech.
+    \item (Optional) Add functionality to the firmware application that enables it to discriminate audio signals and act only upon detection of predefined sounds.
+\end{itemize}
 
 - 
 
 \section{Challenges}
+\begin{itemize}
+    \item The microcontroller may not have enough computing power to do all of the analysis in real time. In this case, the signal analysis and control calculations will be offloaded to the command line application running on a laptop or PC. The command line application will be sending the device firmware commands, indicating to which angle the servo motors should be moved.
+    \item The microphone and amplifier setup may not be able to have the system obtain a strong and clear enough signal. In this case, the sounds volume will be increased. If that does not help enough, a more distinct sound signal will be produced.
+    \item The microcontroller may not be able to sample the sound signal quickly enough, or with high enough resolution. In this case, a dedicated ADC will be added to the system.
 
-- The sound input circuit may not be able to pick up low-volume sounds
-- The used microcontroller may not be able to sample quickly or accurately enough to determine phase differences with a great enough resolution
-
+\end{itemize}
 \section{Deliverables}
+\begin{itemize}
+    \item A diagram of the components used in the device and the connections between them.
+    \item A schematic drawing of the microphone setup
+    \item A literature study in which is gathered theories on the various analysis methods used.
+    \item A set of Matlab scripts that implements the TDOA analysis, the signal power analysis, and optionally the sound classification,
+    \item Source code of a firmware application that is able to record microphone measurements
+    \item Source code of a command line application that connects with the device and obtains raw measurement data, and if necessary, runs the analyses and control algorithms.
+    \item A report documenting the process and the outcomes.
+    \item A video recording demostrating the device performance.
+\end{itemize}
+
+\bibliographystyle{plain}
+\bibliography{references}
+\end{document}
