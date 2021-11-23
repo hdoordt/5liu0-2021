@@ -75,7 +75,7 @@ where
     ) -> Self {
         let buffer = SaadcBuffer::take().expect("SaadcBuffer is already taken");
 
-        // Taken from nrf52840_hal
+        // Heavily based on nrf52840_hal::saadc
         let SaadcConfig {
             resolution,
             oversample,
@@ -105,7 +105,8 @@ where
             });
             saadc.ch[chan].pseln.write(|w| w.pseln().nc());
         }
-
+        
+        // Set up DMA
         let buffer_slice = buffer.as_slice();
         saadc
             .result
@@ -119,6 +120,7 @@ where
         let timer = timer.free();
         let timer_block = timer.as_timer0();
 
+        // Connect PPI channel
         ppi_channel.set_task_endpoint(&saadc.tasks_sample);
         ppi_channel.set_event_endpoint(&timer_block.events_compare[0]);
         ppi_channel.enable();
@@ -128,7 +130,7 @@ where
         // Calibrate
         saadc.events_calibratedone.reset();
         saadc.tasks_calibrateoffset.write(|w| unsafe { w.bits(1) });
-        while saadc.events_calibratedone.read().bits() == 0 {}
+        while saadc.events_calibratedone.read().events_calibratedone().bit_is_clear() {}
 
         Self {
             saadc,

@@ -4,11 +4,7 @@
 use folley_firmware as firmware;
 use nrf52840_hal as hal;
 
-use firmware::{
-    mic_array::{MicArray, Pins as MicArrayPins},
-    pan_tilt::PanTilt,
-    uarte::{Baudrate, Parity, Pins as UartePins, Uarte},
-};
+use firmware::{mic_array::{self, MicArray, Pins as MicArrayPins}, pan_tilt::PanTilt, uarte::{Baudrate, Parity, Pins as UartePins, Uarte}};
 
 #[allow(unused_imports)]
 use hal::prelude::*;
@@ -122,8 +118,6 @@ const APP: () = {
         pan_tilt.pan_deg(pan_tilt_status.pan_deg);
         pan_tilt.tilt_deg(pan_tilt_status.tilt_deg);
 
-        mic_array.start_sampling_task();
-
         init::LateResources {
             uarte0,
             accumulator,
@@ -142,13 +136,15 @@ const APP: () = {
         }
     }
 
-    #[task(capacity = 5, priority = 10, resources = [pan_tilt, pan_tilt_status], spawn = [send_message])]
+    #[task(capacity = 5, priority = 10, resources = [pan_tilt, pan_tilt_status, mic_array], spawn = [send_message])]
     fn handle_message(ctx: handle_message::Context, msg: ServerToDevice) {
         let pan_tilt = ctx.resources.pan_tilt;
         let pan_tilt_status = ctx.resources.pan_tilt_status;
+        let mut mic_array = ctx.resources.mic_array;
         let ServerToDevice {
             pan_degrees,
             tilt_degrees,
+            set_sampling_enabled,
         } = msg;
 
         if let Some(deg) = pan_degrees {
@@ -160,6 +156,11 @@ const APP: () = {
             defmt::println!("Tilt to {} degrees", deg);
             pan_tilt_status.tilt_deg = deg;
             pan_tilt.tilt_deg(deg);
+        }
+        match set_sampling_enabled {
+            Some(true) => mic_array.lock(|m| m.start_sampling_task()),
+            Some(false) => mic_array.lock(|m| m.stop_sampling_task()),
+            None => {},
         }
 
         ctx.spawn
@@ -238,7 +239,7 @@ const APP: () = {
         let mic_array = ctx.resources.mic_array;
         mic_array.clear_interrupt();
 
-        defmt::println!("Sample ready!");
+        defmt::debug!("Sample ready!");
     }
 
     // RTIC requires that unused interrupts are declared in an extern block when

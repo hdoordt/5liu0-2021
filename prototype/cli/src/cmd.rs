@@ -24,6 +24,7 @@ impl Cmd {
                 return SendMessage(ServerToDevice {
                     pan_degrees: Some(degrees),
                     tilt_degrees: None,
+                    ..ServerToDevice::default()
                 });
             }
         }
@@ -32,8 +33,22 @@ impl Cmd {
                 return SendMessage(ServerToDevice {
                     tilt_degrees: Some(degrees),
                     pan_degrees: None,
+                    ..ServerToDevice::default()
                 });
             }
+        }
+        if let Some("start") = first {
+            return SendMessage(ServerToDevice {
+                set_sampling_enabled: Some(true),
+                ..ServerToDevice::default()
+            });
+        }
+
+        if let Some("stop") = first {
+            return SendMessage(ServerToDevice {
+                set_sampling_enabled: Some(false),
+                ..ServerToDevice::default()
+            });
         }
 
         PrintErr("Error parsing command")
