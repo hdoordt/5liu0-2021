@@ -21,7 +21,7 @@ use hal::{
         Disconnected, Level,
     },
     pac::{TIMER0, TIMER1, TWIM0, UARTE0},
-    ppi::{self, Ppi0},
+    ppi::{self, Ppi0, Ppi1},
     saadc::SaadcConfig,
     timer::Periodic,
     twim::Pins as TwimPins,
@@ -39,8 +39,7 @@ const APP: () = {
     struct Resources {
         pan_tilt_status: PanTiltStatus,
         accumulator: CobsAccumulator<32>,
-        uarte0: Uarte<UARTE0>,
-        timer0: Timer<TIMER0, Periodic>,
+        uarte0: Uarte<UARTE0, TIMER0, Ppi0>,
         pan_tilt: PanTilt<Pca9685<Twim<TWIM0>>>,
         mic_array: MicArray<
             P0_03<Disconnected>,
@@ -48,7 +47,7 @@ const APP: () = {
             P0_28<Disconnected>,
             P0_29<Disconnected>,
             TIMER1,
-            Ppi0,
+            Ppi1,
         >,
     }
 
@@ -59,6 +58,7 @@ const APP: () = {
         // Initialize UARTE0
         // Initialize port0
         let port0 = Parts::new(ctx.device.P0);
+        let ppi = ppi::Parts::new(ctx.device.PPI);
 
         // Receiving pin, initialize as input
         let rxd = port0.p0_08.into_floating_input().degrade();
@@ -77,12 +77,17 @@ const APP: () = {
             rts: None, // Request to send pin
         };
 
+        let mut timer0 = Timer::periodic(ctx.device.TIMER0);
+        timer0.start(500_000u32); // 100 ms
+
         // Initialize UARTE0 peripheral with standard configuration
         let uarte0 = Uarte::init(
             ctx.device.UARTE0, // Take peripheral handle by value
             uart_pins,         // Take pins by value
             Parity::EXCLUDED,
             Baudrate::BAUD115200,
+            timer0,
+            ppi.ppi0,
         );
 
         let scl = port0.p0_27.into_floating_input().degrade();
@@ -90,8 +95,6 @@ const APP: () = {
 
         let twim0_pins = TwimPins { scl, sda };
         let mut pan_tilt = PanTilt::new(ctx.device.TWIM0, twim0_pins);
-
-        let ppi = ppi::Parts::new(ctx.device.PPI);
 
         let mic_pins = MicArrayPins {
             mic1: port0.p0_03,
@@ -104,15 +107,10 @@ const APP: () = {
         };
 
         let mut timer1 = Timer::periodic(ctx.device.TIMER1);
-        timer1.enable_interrupt();
         timer1.start(3_000_000u32);
 
         let mut mic_array =
-            MicArray::new(ctx.device.SAADC, mic_pins, saadc_config, timer1, ppi.ppi0);
-
-        let mut timer0 = Timer::periodic(ctx.device.TIMER0);
-        timer0.enable_interrupt();
-        timer0.start(500_000u32); // 100 ms
+            MicArray::new(ctx.device.SAADC, mic_pins, saadc_config, timer1, ppi.ppi1);
 
         let accumulator = CobsAccumulator::new();
 
@@ -128,7 +126,6 @@ const APP: () = {
 
         init::LateResources {
             uarte0,
-            timer0,
             accumulator,
             pan_tilt,
             pan_tilt_status,
@@ -193,27 +190,6 @@ const APP: () = {
             )
         }
         defmt::debug!("Done sending message");
-    }
-
-    #[task(
-        binds = TIMER0,
-        priority = 99,
-        resources = [timer0, uarte0],
-    )]
-    fn on_timer0(mut ctx: on_timer0::Context) {
-        let timer0 = ctx.resources.timer0;
-        defmt::debug!("Running task on_timer 0");
-        if timer0.event_compare_cc0().read().bits() != 0x00u32 {
-            timer0.event_compare_cc0().write(|w| unsafe { w.bits(0) });
-            // We need to lock here, because the on_uarte0 task could also access
-            // uarte0_rx, and as that task has a higher priority, it could pre-empt
-            // the current task.
-            ctx.resources.uarte0.lock(|uarte0| {
-                // Stop current read transaction. Fluhes the Uarte FIFO,
-                // and triggers and ENDRX event, which triggers on_uarte0
-                uarte0.stop_rx_task();
-            });
-        }
     }
 
     #[task(

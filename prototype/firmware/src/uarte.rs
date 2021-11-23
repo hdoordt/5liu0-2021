@@ -1,6 +1,13 @@
+use core::marker::PhantomData;
+
 use nrf52840_hal as hal;
 
-pub use hal::uarte::{Baudrate, Instance, Parity, Pins, Uarte as HalUarte};
+pub use hal::uarte::{Baudrate, Instance as UarteInstance, Parity, Pins, Uarte as HalUarte};
+use hal::{
+    ppi::ConfigurablePpi,
+    timer::{Instance as TimerInstance, Periodic},
+    Timer,
+};
 
 use self::rx_buffer::UarteRxBuffer;
 
@@ -10,14 +17,28 @@ pub enum UarteEvent {
     // Add more variants as you expect more to occur
 }
 
-pub struct Uarte<U> {
+pub struct Uarte<U, T, P> {
     uarte: U,
     buffer: UarteRxBuffer,
     endtx_raised: bool,
+    timer: T,
+    ppi_channel: PhantomData<P>,
 }
 
-impl<U: Instance> Uarte<U> {
-    pub fn init(uarte: U, pins: Pins, parity: Parity, baudrate: Baudrate) -> Self {
+impl<U, T, P> Uarte<U, T, P>
+where
+    U: UarteInstance,
+    T: TimerInstance,
+    P: ConfigurablePpi,
+{
+    pub fn init(
+        uarte: U,
+        pins: Pins,
+        parity: Parity,
+        baudrate: Baudrate,
+        timer: Timer<T, Periodic>,
+        mut ppi_channel: P,
+    ) -> Self {
         let buffer = UarteRxBuffer::take().expect("UarteRxBuffer is already taken");
 
         // We want to use advanced features that the HAL sadly does not implement.
@@ -46,10 +67,19 @@ impl<U: Instance> Uarte<U> {
             .write(|w| w.endrx().set_bit().endtx().set_bit());
         uarte.tasks_startrx.write(|w| w.tasks_startrx().set_bit());
 
+        let timer = timer.free();
+        let timer_block = timer.as_timer0();
+
+        ppi_channel.set_task_endpoint(&uarte.tasks_stoprx);
+        ppi_channel.set_event_endpoint(&timer_block.events_compare[0]);
+        ppi_channel.enable();
+
         Self {
             uarte,
             buffer,
             endtx_raised: false,
+            timer,
+            ppi_channel: PhantomData,
         }
     }
 
@@ -71,11 +101,7 @@ impl<U: Instance> Uarte<U> {
             self.uarte.events_txstarted.reset();
         }
 
-        defmt::trace!(
-            "TX contents: {:?}. chunk_len: {}",
-            bytes,
-            bytes.len()
-        );
+        defmt::trace!("TX contents: {:?}. chunk_len: {}", bytes, bytes.len());
 
         // Setup transaction parameters
         self.uarte
@@ -91,12 +117,6 @@ impl<U: Instance> Uarte<U> {
             .tasks_starttx
             .write(|w| w.tasks_starttx().set_bit());
         Ok(())
-    }
-
-    pub fn stop_rx_task(&mut self) {
-        self.uarte
-            .tasks_stoprx
-            .write(|w| w.tasks_stoprx().set_bit());
     }
 
     pub fn get_clear_event(&mut self) -> Option<UarteEvent> {
