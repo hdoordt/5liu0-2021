@@ -21,7 +21,7 @@ pub struct Uarte<U, T, P> {
     uarte: U,
     buffer: UarteRxBuffer,
     endtx_raised: bool,
-    timer: T,
+    timer: PhantomData<T>,
     ppi_channel: PhantomData<P>,
 }
 
@@ -78,7 +78,7 @@ where
             uarte,
             buffer,
             endtx_raised: false,
-            timer,
+            timer: PhantomData,
             ppi_channel: PhantomData,
         }
     }
@@ -140,12 +140,6 @@ where
 
     pub fn get_rx_chunk(&mut self) -> &'static [u8] {
         let chunk_len = self.uarte.rxd.amount.read().amount().bits() as usize;
-        // defmt::trace!(
-        //     "UARTE0_BUFFER contents: {:?}. chunk_len: {}",
-        //     self.buffer.as_slice(),
-        //     chunk_len
-        // );
-
         &self.buffer.as_slice()[0..chunk_len]
     }
 }

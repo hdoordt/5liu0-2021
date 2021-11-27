@@ -8,8 +8,8 @@ use panic_probe as _;
 
 pub mod pan_tilt;
 
-pub mod uarte;
 pub mod mic_array;
+pub mod uarte;
 
 // same panicking *behavior* as `panic-probe` but doesn't print a panic message
 // this prevents the panic message being printed *twice* when `defmt::panic` is invoked

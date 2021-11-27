@@ -1,4 +1,8 @@
-use core::marker::PhantomData;
+use core::{
+    marker::PhantomData,
+    mem,
+    sync::atomic::{compiler_fence, Ordering},
+};
 
 use embedded_hal::adc::Channel;
 use nrf52840_hal::{
@@ -10,6 +14,8 @@ use nrf52840_hal::{
 };
 
 use self::saadc_buffer::SaadcBuffer;
+pub use saadc_buffer::buffer_size;
+pub type RawSample = [i16; 4];
 
 pub struct Pins<M1, M2, M3, M4>
 where
@@ -41,8 +47,6 @@ where
     }
 }
 
-type RawSample = [i16; 4];
-
 pub struct MicArray<M1, M2, M3, M4, T, P>
 where
     M1: Channel<Saadc, ID = u8>,
@@ -51,7 +55,7 @@ where
     M4: Channel<Saadc, ID = u8>,
 {
     saadc: SAADC,
-    pins: Pins<M1, M2, M3, M4>,
+    pins: PhantomData<Pins<M1, M2, M3, M4>>,
     buffer: SaadcBuffer,
     timer: T,
     ppi_channel: PhantomData<P>,
@@ -94,6 +98,7 @@ where
 
         for (chan, &ain_id) in pins.channels().iter().enumerate() {
             defmt::debug!("Configuring channel {} for AIN{}", chan, ain_id);
+
             saadc.ch[chan].config.write(|w| {
                 w.refsel().variant(reference);
                 w.gain().variant(gain);
@@ -117,10 +122,9 @@ where
             .result
             .ptr
             .write(|w| unsafe { w.bits(buffer_slice.as_ptr() as u32) });
-        saadc
-            .result
-            .maxcnt
-            .write(|w| unsafe { w.bits(buffer_slice.len() as u32) });
+        saadc.result.maxcnt.write(|w| unsafe {
+            w.bits((mem::size_of::<RawSample>() / 2 * buffer_slice.len()) as u32)
+        });
 
         let timer = timer.free();
         let timer_block = timer.as_timer0();
@@ -130,12 +134,13 @@ where
         ppi_channel.set_event_endpoint(&timer_block.events_compare[0]);
         ppi_channel.enable();
 
-        todo!("Fix interrupt stuff");
         saadc.intenset.write(|w| w.end().set_bit());
-
+        compiler_fence(Ordering::SeqCst);
         // Calibrate
         saadc.events_calibratedone.reset();
-        saadc.tasks_calibrateoffset.write(|w| unsafe { w.bits(1) });
+        saadc
+            .tasks_calibrateoffset
+            .write(|w| w.tasks_calibrateoffset().set_bit());
         while saadc
             .events_calibratedone
             .read()
@@ -143,9 +148,13 @@ where
             .bit_is_clear()
         {}
 
+        // Only start after all initalization is done.
+        compiler_fence(Ordering::SeqCst);
+        saadc.tasks_start.write(|w| w.tasks_start().set_bit());
+
         Self {
             saadc,
-            pins,
+            pins: PhantomData,
             buffer,
             timer,
             ppi_channel: PhantomData,
@@ -156,8 +165,19 @@ where
         self.saadc.events_end.reset();
     }
 
-    pub fn sample_raw(&self) -> () {
-        defmt::debug!("Samples: {:?}", self.buffer.as_slice())
+    pub fn copy_samples(&self, buf: &mut [RawSample]) -> usize {
+        // The amount of samples read by the SAADC
+        let amount = self.saadc.result.amount.read().bits() as usize;
+
+        let slice = self.buffer.as_slice();
+
+        let count = slice.len().min(amount).min(buf.len());
+        // Note(unsafe): We have made sure count is no longer than the source and the dest length
+        unsafe { core::ptr::copy_nonoverlapping(slice.as_ptr(), buf.as_mut_ptr(), count) }
+        // Only start conversion after copy is complete.
+        compiler_fence(Ordering::SeqCst);
+        self.saadc.tasks_start.write(|w| w.tasks_start().set_bit());
+        count
     }
 
     pub fn start_sampling_task(&mut self) {
@@ -183,9 +203,11 @@ mod saadc_buffer {
 
     use super::RawSample;
 
-    const BUFFER_SIZE: usize = 32;
+    pub const fn buffer_size() -> usize {
+        32
+    }
 
-    static mut SAADC_BUFFER: [RawSample; BUFFER_SIZE] = [[0i16; 4]; BUFFER_SIZE];
+    static mut SAADC_BUFFER: [RawSample; buffer_size()] = [[0i16; 4]; buffer_size()];
     static BUFFER_TAKEN: AtomicBool = AtomicBool::new(false);
 
     pub struct SaadcBuffer {

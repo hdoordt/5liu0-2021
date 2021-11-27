@@ -2,10 +2,10 @@
 use defmt::Format;
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Default)]
 #[cfg_attr(feature = "defmt", derive(Format))]
 pub struct DeviceToServer {
-    pub pan_tilt: PanTiltStatus,
+    pub pan_tilt: Option<PanTiltStatus>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy)]

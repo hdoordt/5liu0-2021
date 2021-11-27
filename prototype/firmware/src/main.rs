@@ -5,7 +5,7 @@ use folley_firmware as firmware;
 use nrf52840_hal as hal;
 
 use firmware::{
-    mic_array::{MicArray, Pins as MicArrayPins},
+    mic_array::{MicArray, Pins as MicArrayPins, RawSample},
     pan_tilt::PanTilt,
     uarte::{Baudrate, Parity, Pins as UartePins, Uarte},
 };
@@ -17,7 +17,7 @@ use embedded_hal::timer::CountDown;
 use folley_format::{device_to_server::PanTiltStatus, DeviceToServer, ServerToDevice};
 use hal::{
     gpio::{
-        p0::{Parts, P0_03, P0_04, P0_28, P0_29},
+        p0::{self, P0_03, P0_04, P0_28, P0_29},
         Disconnected, Level,
     },
     pac::{TIMER0, TIMER1, TWIM0, UARTE0},
@@ -28,6 +28,15 @@ use hal::{
 };
 use postcard::CobsAccumulator;
 use pwm_pca9685::Pca9685;
+
+type MicArrayInstance = MicArray<
+    P0_03<Disconnected>,
+    P0_04<Disconnected>,
+    P0_28<Disconnected>,
+    P0_29<Disconnected>,
+    TIMER1,
+    Ppi1,
+>;
 
 #[rtic::app(
     device=nrf52840_hal::pac,
@@ -40,14 +49,7 @@ const APP: () = {
         accumulator: CobsAccumulator<32>,
         uarte0: Uarte<UARTE0, TIMER0, Ppi0>,
         pan_tilt: PanTilt<Pca9685<Twim<TWIM0>>>,
-        mic_array: MicArray<
-            P0_03<Disconnected>,
-            P0_04<Disconnected>,
-            P0_28<Disconnected>,
-            P0_29<Disconnected>,
-            TIMER1,
-            Ppi1,
-        >,
+        mic_array: MicArrayInstance,
     }
 
     // Initialize peripherals, before interrupts are unmasked
@@ -56,7 +58,7 @@ const APP: () = {
     fn init(ctx: init::Context) -> init::LateResources {
         // Initialize UARTE0
         // Initialize port0
-        let port0 = Parts::new(ctx.device.P0);
+        let port0 = p0::Parts::new(ctx.device.P0);
         let ppi = ppi::Parts::new(ctx.device.PPI);
 
         // Receiving pin, initialize as input
@@ -89,8 +91,8 @@ const APP: () = {
             ppi.ppi0,
         );
 
-        let scl = port0.p0_27.into_floating_input().degrade();
-        let sda = port0.p0_26.into_floating_input().degrade();
+        let scl = port0.p0_30.into_floating_input().degrade();
+        let sda = port0.p0_31.into_floating_input().degrade();
 
         let twim0_pins = TwimPins { scl, sda };
         let mut pan_tilt = PanTilt::new(ctx.device.TWIM0, twim0_pins);
@@ -107,7 +109,7 @@ const APP: () = {
         };
 
         let mut timer1 = Timer::periodic(ctx.device.TIMER1);
-        timer1.start(10_000u32);
+        timer1.start(1_000u32);
 
         let mut mic_array =
             MicArray::new(ctx.device.SAADC, mic_pins, saadc_config, timer1, ppi.ppi1);
@@ -171,7 +173,8 @@ const APP: () = {
 
         ctx.spawn
             .send_message(DeviceToServer {
-                pan_tilt: *pan_tilt_status,
+                pan_tilt: Some(*pan_tilt_status),
+                ..DeviceToServer::default()
             })
             .ok();
     }
@@ -243,9 +246,10 @@ const APP: () = {
     #[task(binds = SAADC, priority = 255, resources = [mic_array])]
     fn on_saadc(ctx: on_saadc::Context) {
         let mic_array = ctx.resources.mic_array;
+        let mut buf = [RawSample::default(); firmware::mic_array::buffer_size()];
         mic_array.clear_interrupt();
-        mic_array.sample_raw();
-        defmt::debug!("Sample ready!");
+        let count = mic_array.copy_samples(&mut buf);
+        defmt::debug!("Sample ready! {}, {:?}", count, &buf);
     }
 
     // RTIC requires that unused interrupts are declared in an extern block when
