@@ -15,7 +15,7 @@ impl RxPort {
     }
 
     pub fn run_read_task<F: Fn(DeviceToServer) -> ()>(&mut self, on_msg: F) {
-        let mut accumulator = CobsAccumulator::<32>::new();
+        let mut accumulator = CobsAccumulator::<1024>::new();
         let mut serial_buf = [0u8; 32];
         use postcard::FeedResult::*;
         loop {

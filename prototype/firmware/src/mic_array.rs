@@ -5,6 +5,7 @@ use core::{
 };
 
 use embedded_hal::adc::Channel;
+use folley_format::device_to_server::{MicArraySample, SampleBuffer};
 use nrf52840_hal::{
     pac::SAADC,
     ppi::ConfigurablePpi,
@@ -14,8 +15,6 @@ use nrf52840_hal::{
 };
 
 use self::saadc_buffer::SaadcBuffer;
-pub use saadc_buffer::buffer_size;
-pub type RawSample = [i16; 4];
 
 pub struct Pins<M1, M2, M3, M4>
 where
@@ -77,7 +76,7 @@ where
         timer: Timer<T, Periodic>,
         mut ppi_channel: P,
     ) -> Self {
-        let buffer = SaadcBuffer::take().expect("SaadcBuffer is already taken");
+        let mut buffer = SaadcBuffer::take().expect("SaadcBuffer is already taken");
 
         // Heavily based on nrf52840_hal::saadc
         let SaadcConfig {
@@ -117,13 +116,13 @@ where
         }
 
         // Set up DMA
-        let buffer_slice = buffer.as_slice();
+        let buffer_slice = buffer.as_mut_slice();
         saadc
             .result
             .ptr
             .write(|w| unsafe { w.bits(buffer_slice.as_ptr() as u32) });
         saadc.result.maxcnt.write(|w| unsafe {
-            w.bits((mem::size_of::<RawSample>() / 2 * buffer_slice.len()) as u32)
+            w.bits((mem::size_of::<MicArraySample>() / 2 * buffer_slice.len()) as u32)
         });
 
         let timer = timer.free();
@@ -165,11 +164,11 @@ where
         self.saadc.events_end.reset();
     }
 
-    pub fn copy_samples(&self, buf: &mut [RawSample]) -> usize {
+    pub fn copy_samples(&mut self, buf: &mut SampleBuffer) -> usize {
         // The amount of samples read by the SAADC
         let amount = self.saadc.result.amount.read().bits() as usize;
 
-        let slice = self.buffer.as_slice();
+        let slice = self.buffer.as_mut_slice();
 
         let count = slice.len().min(amount).min(buf.len());
         // Note(unsafe): We have made sure count is no longer than the source and the dest length
@@ -198,16 +197,13 @@ where
 mod saadc_buffer {
     use core::{
         marker::PhantomData,
+        mem::MaybeUninit,
         sync::atomic::{AtomicBool, Ordering},
     };
 
-    use super::RawSample;
+    use folley_format::device_to_server::{MicArraySample, SampleBuffer};
 
-    pub const fn buffer_size() -> usize {
-        32
-    }
-
-    static mut SAADC_BUFFER: [RawSample; buffer_size()] = [[0i16; 4]; buffer_size()];
+    static mut SAADC_BUFFER: MaybeUninit<SampleBuffer> = MaybeUninit::uninit();
     static BUFFER_TAKEN: AtomicBool = AtomicBool::new(false);
 
     pub struct SaadcBuffer {
@@ -219,13 +215,18 @@ mod saadc_buffer {
             if BUFFER_TAKEN.swap(true, Ordering::Relaxed) {
                 return None;
             }
+            let buf = unsafe { &mut *SAADC_BUFFER.as_mut_ptr() };
+            for i in 0..SampleBuffer::size() {
+                buf[i] = MicArraySample::default();
+            }
+
             Some(Self {
                 _marker: PhantomData,
             })
         }
 
-        pub fn as_slice(&self) -> &'static [RawSample] {
-            unsafe { &SAADC_BUFFER }
+        pub fn as_mut_slice(&mut self) -> &'static mut [MicArraySample] {
+            &mut unsafe { &mut *SAADC_BUFFER.as_mut_ptr() }.0
         }
     }
 }
