@@ -82,14 +82,14 @@ const APP: () = {
         };
 
         let mut timer0 = Timer::periodic(ctx.device.TIMER0);
-        timer0.start(500_000u32); // 100 ms
+        timer0.start(5u32); // 10 us
 
         // Initialize UARTE0 peripheral with standard configuration
         let uarte0 = Uarte::init(
             ctx.device.UARTE0, // Take peripheral handle by value
             uart_pins,         // Take pins by value
             Parity::EXCLUDED,
-            Baudrate::BAUD115200,
+            Baudrate::BAUD460800,
             timer0,
             ppi.ppi0,
         );

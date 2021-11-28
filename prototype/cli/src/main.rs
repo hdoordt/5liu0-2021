@@ -1,16 +1,25 @@
 use clap::{App, Arg};
-use folley_format::{DeviceToServer, ServerToDevice};
+use folley_format::device_to_server::SampleBuffer;
+use folley_format::DeviceToServer;
 use serialport::{SerialPortType, UsbPortInfo};
 use std::io::{self, BufRead};
-use std::{thread, time::Duration};
+use std::sync::mpsc::{self, Sender};
+use std::thread;
+use std::time::Duration;
+use store::SampleStore;
 
 use crate::serial::TxPort;
 
 mod cmd;
 mod serial;
+mod store;
 
-fn handle_message(msg: DeviceToServer) {
+fn handle_message(msg: DeviceToServer, store_tx: Option<Sender<SampleBuffer>>) {
     println!("Got message: {:?}", msg);
+
+    if let Some(buf) = msg.samples {
+        store_tx.map(|t| t.send(buf));
+    }
     // TODO, do cool stuff with the message that just came in.
 }
 
@@ -22,7 +31,7 @@ fn run<const N: usize>(mut tx_port: TxPort<N>) {
     for line in stdin.lock().lines().filter_map(|r| r.ok()) {
         match cmd.parse_line(&line) {
             SendMessage(msg) => {
-                tx_port.write_message(&msg);
+                tx_port.write_message(&msg).unwrap();
             }
             a => eprintln!("Unknown action {:?}", a),
         }
@@ -34,15 +43,26 @@ fn main() {
     let matches = App::new("Device commander")
         .version("0.1")
         .arg(
+            Arg::with_name("OUT_FILE")
+                .short("o")
+                .long("outfile")
+                .required(false)
+                .takes_value(true)
+                .help("The path of the file to write to"),
+        )
+        .arg(
             Arg::with_name("PORT")
                 .index(1)
                 .takes_value(true)
                 .help("The path to the serial port to listen to"),
         )
         .get_matches();
+    let store = matches
+        .value_of("OUT_FILE")
+        .map(|p| SampleStore::new(p).unwrap());
 
     if let Some(port_name) = matches.value_of("PORT") {
-        listen(port_name)
+        listen(port_name, store)
     } else {
         eprintln!("Please specify port as the first argument. For help, run with --help");
         eprintln!();
@@ -50,22 +70,37 @@ fn main() {
     }
 }
 
-fn listen(port_name: &str) {
-    let mut port = serialport::new(port_name, 115200)
+fn listen(port_name: &str, store: Option<SampleStore<64>>) {
+    let port = serialport::new(port_name, 460800)
         // .flow_control(serialport::FlowControl::Hardware)
         .timeout(Duration::from_millis(500))
         .open();
+
+    let (store_tx, store_thread) = match store {
+        Some(mut s) => {
+            let (tx, rx) = mpsc::channel();
+            let thread = thread::spawn(move || {
+                while let Ok(samples) = rx.recv() {
+                    s.store(samples).unwrap();
+                }
+            });
+            (Some(tx), Some(thread))
+        }
+        _ => (None, None),
+    };
 
     match port {
         Ok(port) => {
             let tx_port: TxPort<32> = TxPort::new(port.try_clone().unwrap());
 
-            let rx_thread =
-                std::thread::spawn(|| serial::RxPort::new(port).run_read_task(handle_message));
+            let rx_thread = thread::spawn(|| {
+                serial::RxPort::new(port)
+                    .run_read_task::<_, 1024>(move |msg| handle_message(msg, store_tx.clone()))
+            });
 
             run(tx_port);
 
-            rx_thread.join();
+            rx_thread.join().unwrap();
         }
         Err(e) => {
             eprintln!("Error opening serial port {}: {}", port_name, e);
@@ -73,6 +108,7 @@ fn listen(port_name: &str) {
             print_available_ports();
         }
     }
+    store_thread.map(|t| t.join().unwrap());
 }
 
 fn print_available_ports() {
