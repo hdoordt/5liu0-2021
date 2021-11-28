@@ -71,7 +71,7 @@ fn main() {
 }
 
 fn listen(port_name: &str, store: Option<SampleStore<64>>) {
-    let port = serialport::new(port_name, 460800)
+    let port = serialport::new(port_name, 115200)
         // .flow_control(serialport::FlowControl::Hardware)
         .timeout(Duration::from_millis(500))
         .open();

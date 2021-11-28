@@ -4,20 +4,16 @@
 use folley_firmware as firmware;
 use nrf52840_hal as hal;
 
+#[allow(unused_imports)]
+use hal::prelude::*;
+
+use embedded_hal::timer::CountDown;
 use firmware::{
     mic_array::{MicArray, Pins as MicArrayPins},
     pan_tilt::PanTilt,
     uarte::{Baudrate, Parity, Pins as UartePins, Uarte},
 };
-
-#[allow(unused_imports)]
-use hal::prelude::*;
-
-use embedded_hal::timer::CountDown;
-use folley_format::{
-    device_to_server::{PanTiltStatus, SampleBuffer},
-    DeviceToServer, ServerToDevice,
-};
+use folley_format::{device_to_server::PanTiltStatus, DeviceToServer, ServerToDevice};
 use hal::{
     gpio::{
         p0::{self, P0_03, P0_04, P0_28, P0_29},
@@ -89,7 +85,7 @@ const APP: () = {
             ctx.device.UARTE0, // Take peripheral handle by value
             uart_pins,         // Take pins by value
             Parity::EXCLUDED,
-            Baudrate::BAUD460800,
+            Baudrate::BAUD115200,
             timer0,
             ppi.ppi0,
         );
@@ -184,14 +180,16 @@ const APP: () = {
 
     #[task(capacity = 10, resources = [uarte0], priority  = 1)]
     fn send_message(mut ctx: send_message::Context, msg: DeviceToServer) {
+        use firmware::uarte::StartTxResult::Busy;
+
         defmt::info!("Sending message: {:?}", &msg);
         let mut buf = [0; 1024];
         match postcard::to_slice_cobs(&msg, &mut buf) {
             Ok(bytes) => {
-                while let Err(_) = ctx
+                while let Busy = ctx
                     .resources
                     .uarte0
-                    .lock(|uarte0| uarte0.try_start_tx(&bytes))
+                    .lock(|uarte0| uarte0.try_start_tx(bytes))
                 {
                     defmt::debug!("Waiting for currently running tx task to finish");
                     // Go to sleep to avoid busy waiting
@@ -199,7 +197,11 @@ const APP: () = {
                 }
             }
             Err(e) => {
-                defmt::error!("Could not serialize message {}. Error: {}", msg, defmt::Debug2Format(&e))
+                defmt::error!(
+                    "Could not serialize message {}. Error: {}",
+                    msg,
+                    defmt::Debug2Format(&e)
+                )
             }
         }
         defmt::debug!("Done sending message");
@@ -215,14 +217,11 @@ const APP: () = {
         use firmware::uarte::UarteEvent::*;
         defmt::trace!("Running task on_uarte0");
 
-        ctx.resources
-            .uarte0
-            .lock(|uarte0| match uarte0.get_clear_event() {
-                Some(EndRx) => {
-                    ctx.spawn.read_uarte0().ok();
-                }
-                _ => (),
-            });
+        ctx.resources.uarte0.lock(|uarte0| {
+            if let Some(EndRx) = uarte0.get_clear_event() {
+                ctx.spawn.read_uarte0().ok();
+            }
+        });
     }
 
     #[task(
@@ -249,13 +248,12 @@ const APP: () = {
     #[task(binds = SAADC, priority = 255, resources = [mic_array], spawn = [send_message])]
     fn on_saadc(ctx: on_saadc::Context) {
         let mic_array = ctx.resources.mic_array;
-        let mut buf = SampleBuffer::default();
-        mic_array.clear_interrupt();
-        let count = mic_array.copy_samples(&mut buf);
 
-        defmt::debug!("Sample ready! {}, {:?}", count, &buf);
+        let samples = mic_array.get_samples_and_start();
+
+        defmt::debug!("Sample ready!, {:?}", &samples);
         let msg = DeviceToServer {
-            samples: Some(buf),
+            samples: Some(samples.clone()),
             ..DeviceToServer::default()
         };
         ctx.spawn

@@ -17,6 +17,13 @@ pub enum UarteEvent {
     // Add more variants as you expect more to occur
 }
 
+pub enum StartTxResult {
+    /// Transaction was started successfully.
+    Done,
+    /// TX is busy. Try again later.
+    Busy,
+}
+
 pub struct Uarte<U, T, P> {
     uarte: U,
     buffer: UarteRxBuffer,
@@ -83,7 +90,7 @@ where
         }
     }
 
-    pub fn try_start_tx(&mut self, bytes: &[u8]) -> Result<(), ()> {
+    pub fn try_start_tx(&mut self, bytes: &[u8]) -> StartTxResult {
         if self
             .uarte
             .events_txstarted
@@ -93,7 +100,7 @@ where
         {
             if !self.endtx_raised {
                 // There's a write transaction started, and it's not done yet.
-                return Err(());
+                return StartTxResult::Busy;
             }
             self.endtx_raised = false;
             // Clear event flags
@@ -116,7 +123,7 @@ where
         self.uarte
             .tasks_starttx
             .write(|w| w.tasks_starttx().set_bit());
-        Ok(())
+        StartTxResult::Done
     }
 
     pub fn get_clear_event(&mut self) -> Option<UarteEvent> {

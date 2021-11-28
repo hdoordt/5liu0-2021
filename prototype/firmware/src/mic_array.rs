@@ -116,7 +116,7 @@ where
         }
 
         // Set up DMA
-        let buffer_slice = buffer.as_mut_slice();
+        let buffer_slice = buffer.write_buf();
         saadc
             .result
             .ptr
@@ -160,23 +160,19 @@ where
         }
     }
 
-    pub fn clear_interrupt(&mut self) {
-        self.saadc.events_end.reset();
-    }
+    pub fn get_samples_and_start(&mut self) -> &mut SampleBuffer {
+        self.buffer.swap();
+        self.saadc
+            .result
+            .ptr
+            .write(|w| unsafe { w.bits(self.buffer.write_buf().as_ptr() as u32) });
+        let slice = self.buffer.read_buf();
 
-    pub fn copy_samples(&mut self, buf: &mut SampleBuffer) -> usize {
-        // The amount of samples read by the SAADC
-        let amount = self.saadc.result.amount.read().bits() as usize;
-
-        let slice = self.buffer.as_mut_slice();
-
-        let count = slice.len().min(amount).min(buf.len());
-        // Note(unsafe): We have made sure count is no longer than the source and the dest length
-        unsafe { core::ptr::copy_nonoverlapping(slice.as_ptr(), buf.as_mut_ptr(), count) }
-        // Only start conversion after copy is complete.
+        // Only start conversion after we get the read slice reference.
         compiler_fence(Ordering::SeqCst);
+        self.saadc.events_end.reset();
         self.saadc.tasks_start.write(|w| w.tasks_start().set_bit());
-        count
+        slice
     }
 
     pub fn start_sampling_task(&mut self) {
@@ -195,19 +191,17 @@ where
 }
 
 mod saadc_buffer {
-    use core::{
-        marker::PhantomData,
-        mem::MaybeUninit,
-        sync::atomic::{AtomicBool, Ordering},
-    };
+    use core::sync::atomic::{AtomicBool, Ordering};
 
-    use folley_format::device_to_server::{MicArraySample, SampleBuffer};
+    use folley_format::device_to_server::SampleBuffer;
 
-    static mut SAADC_BUFFER: MaybeUninit<SampleBuffer> = MaybeUninit::uninit();
+    static mut SAADC_BUFFER_A: SampleBuffer = SampleBuffer::new_empty();
+    static mut SAADC_BUFFER_B: SampleBuffer = SampleBuffer::new_empty();
     static BUFFER_TAKEN: AtomicBool = AtomicBool::new(false);
 
     pub struct SaadcBuffer {
-        _marker: PhantomData<bool>,
+        read: &'static mut SampleBuffer,
+        write: &'static mut SampleBuffer,
     }
 
     impl SaadcBuffer {
@@ -215,18 +209,27 @@ mod saadc_buffer {
             if BUFFER_TAKEN.swap(true, Ordering::Relaxed) {
                 return None;
             }
-            let buf = unsafe { &mut *SAADC_BUFFER.as_mut_ptr() };
-            for i in 0..SampleBuffer::size() {
-                buf[i] = MicArraySample::default();
-            }
 
             Some(Self {
-                _marker: PhantomData,
+                read: unsafe { &mut SAADC_BUFFER_A },
+                write: unsafe { &mut SAADC_BUFFER_B },
             })
         }
 
-        pub fn as_mut_slice(&mut self) -> &'static mut [MicArraySample] {
-            &mut unsafe { &mut *SAADC_BUFFER.as_mut_ptr() }.0
+        pub fn write_buf(&mut self) -> &mut SampleBuffer {
+            &mut self.write
+        }
+
+        pub fn read_buf(&mut self) -> &mut SampleBuffer {
+            &mut self.read
+        }
+
+        pub fn swap(&mut self) {
+            let write = self.read as *mut _;
+            let read = self.write as *mut _;
+
+            self.write = unsafe { &mut *write };
+            self.read = unsafe { &mut *read };
         }
     }
 }

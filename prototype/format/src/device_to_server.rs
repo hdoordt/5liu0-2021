@@ -21,10 +21,8 @@ pub struct PanTiltStatus {
     pub tilt_deg: f32,
 }
 
-
-
 pub type MicArraySample = [i16; 4];
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[cfg_attr(feature = "defmt", derive(Format))]
 #[repr(transparent)]
 pub struct SampleBuffer(#[serde(with = "BigArray")] pub [MicArraySample; Self::size()]);
@@ -35,14 +33,11 @@ impl SampleBuffer {
     pub const fn size() -> usize {
         Self::SIZE
     }
-}
 
-impl Default for SampleBuffer {
-    fn default() -> Self {
-        Self([[0i16; 4]; Self::size()])
+    pub const fn new_empty() -> Self {
+        Self([[0; 4]; Self::size()])
     }
 }
-
 impl Deref for SampleBuffer {
     type Target = [MicArraySample; Self::size()];
 
