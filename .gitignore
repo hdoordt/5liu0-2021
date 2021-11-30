@@ -16,3 +16,6 @@ target
 *.fdb_latexmk
 *.bbl
 *.blg
+
+# Measurement output
+*.csv
