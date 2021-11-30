@@ -2,10 +2,11 @@ use nrf52840_hal::{
     twim::{Frequency, Instance, Pins},
     Twim,
 };
+
 use pwm_pca9685::{Address, Channel, Pca9685};
 
-pub struct PanTilt<PWM> {
-    pwm: PWM,
+pub struct PanTilt<TWIM> {
+    pwm: Pca9685<TWIM>,
 }
 
 const TILT_LIMIT_DEG: f32 = 150.;
@@ -30,7 +31,7 @@ fn rad_to_deg(rad: f32) -> f32 {
     (rad * pi) / 180.
 }
 
-impl<T: Instance> PanTilt<Pca9685<Twim<T>>> {
+impl<T: Instance> PanTilt<Twim<T>> {
     pub fn new(twim: T, pins: Pins) -> Self {
         let twim0 = Twim::new(twim, pins, Frequency::K400);
 

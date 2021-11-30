@@ -108,10 +108,10 @@ where
                 w.burst().enabled();
                 w
             });
-            assert!((1..=8).contains(&ain_id));
+            assert!((0..=7).contains(&ain_id));
             saadc.ch[chan]
                 .pselp
-                .write(|w| unsafe { w.pselp().bits(ain_id) });
+                .write(|w| unsafe { w.pselp().bits(ain_id + 1) });
             saadc.ch[chan].pseln.write(|w| w.pseln().nc());
         }
 

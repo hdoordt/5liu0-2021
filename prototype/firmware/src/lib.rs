@@ -6,10 +6,31 @@ use defmt_rtt as _; // global logger
 
 use panic_probe as _;
 
+#[cfg(feature = "pan_tilt")]
 pub mod pan_tilt;
-
+#[cfg(feature = "mic_array")]
 pub mod mic_array;
+#[cfg(feature = "uart")]
 pub mod uarte;
+
+/// Workaround for RTIC not being able to
+/// conditionally compile resources
+pub mod stubs {
+    use core::marker::PhantomData;
+
+    pub struct Uarte<U, T, P>(PhantomData<U>, PhantomData<T>, PhantomData<P>);
+    pub struct CobsAccumulator<const N: usize>;
+
+    pub struct MicArray<M1, M2, M3, M4, T, P>(
+        PhantomData<M1>,
+        PhantomData<M2>,
+        PhantomData<M3>,
+        PhantomData<M4>,
+        PhantomData<T>,
+        PhantomData<P>,
+    );
+    pub struct PanTilt<T>(PhantomData<T>);
+}
 
 // same panicking *behavior* as `panic-probe` but doesn't print a panic message
 // this prevents the panic message being printed *twice* when `defmt::panic` is invoked
