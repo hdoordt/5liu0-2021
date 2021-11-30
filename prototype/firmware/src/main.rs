@@ -147,7 +147,7 @@ const APP: () = {
             let saadc_config = SaadcConfig {
                 oversample: Oversample::BYPASS,
                 resistor: Resistor::PULLDOWN,
-                gain: Gain::GAIN1,
+                gain: Gain::GAIN1_5,
                 ..SaadcConfig::default()
             };
 
