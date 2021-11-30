@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+
+# Utility to run a matlab script without setting up the GUI
+matlab -nosplash -nodesktop -r "run('$1');" | tail -n +11
