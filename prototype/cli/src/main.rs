@@ -15,7 +15,7 @@ mod serial;
 mod store;
 
 fn handle_message(msg: DeviceToServer, store_tx: Option<Sender<SampleBuffer>>) {
-    println!("Got message: {:?}", msg);
+    // println!("Got message: {:?}", msg);
 
     if let Some(buf) = msg.samples {
         store_tx.map(|t| t.send(buf));
@@ -72,7 +72,7 @@ fn main() {
 
 fn listen(port_name: &str, store: Option<SampleStore<64>>) {
     let port = serialport::new(port_name, 115200)
-        // .flow_control(serialport::FlowControl::Hardware)
+        .flow_control(serialport::FlowControl::Hardware)
         .timeout(Duration::from_millis(500))
         .open();
 
@@ -95,7 +95,7 @@ fn listen(port_name: &str, store: Option<SampleStore<64>>) {
 
             let rx_thread = thread::spawn(|| {
                 serial::RxPort::new(port)
-                    .run_read_task::<_, 1024>(move |msg| handle_message(msg, store_tx.clone()))
+                    .run_read_task::<_, 4096>(move |msg| handle_message(msg, store_tx.clone()))
             });
 
             run(tx_port);

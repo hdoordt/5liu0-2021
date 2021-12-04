@@ -26,3 +26,5 @@ target = "thumbv7em-none-eabihf" # Cortex-M4F and Cortex-M7F (with FPU)
 [alias]
 run-linux = "run --target x86_64-unknown-linux-gnu"
 run-windows = "run --target x86_64-pc-windows-gnu"
+run-fw = "run -p folley-firmware"
+run-cli = "run-linux -p folley-cli"

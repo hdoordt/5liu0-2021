@@ -5,6 +5,7 @@ use core::{
 };
 
 use embedded_hal::adc::Channel;
+use embedded_hal::timer::Cancel;
 use folley_format::device_to_server::{MicArraySample, SampleBuffer};
 use nrf52840_hal::{
     pac::SAADC,
@@ -73,7 +74,7 @@ where
         saadc: SAADC,
         pins: Pins<M1, M2, M3, M4>,
         config: SaadcConfig,
-        timer: Timer<T, Periodic>,
+        mut timer: Timer<T, Periodic>,
         mut ppi_channel: P,
     ) -> Self {
         let mut buffer = SaadcBuffer::take().expect("SaadcBuffer is already taken");
@@ -124,7 +125,7 @@ where
         saadc.result.maxcnt.write(|w| unsafe {
             w.bits((mem::size_of::<MicArraySample>() / 2 * buffer_slice.len()) as u32)
         });
-
+        timer.cancel().unwrap();
         let timer = timer.free();
         let timer_block = timer.as_timer0();
 

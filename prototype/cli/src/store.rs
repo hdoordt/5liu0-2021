@@ -14,7 +14,7 @@ impl<const N: usize> SampleStore<N> {
     pub fn new<P: AsRef<Path>>(path: P) -> io::Result<Self> {
         let file = File::create(path)?;
         Ok(Self {
-            writer: BufWriter::new(file),
+            writer: BufWriter::with_capacity(N,file),
         })
     }
 

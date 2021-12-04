@@ -28,7 +28,7 @@ pub type MicArraySample = [i16; 4];
 pub struct SampleBuffer(#[serde(with = "BigArray")] pub [MicArraySample; Self::size()]);
 
 impl SampleBuffer {
-    const SIZE: usize = 64;
+    const SIZE: usize = 200;
 
     pub const fn size() -> usize {
         Self::SIZE

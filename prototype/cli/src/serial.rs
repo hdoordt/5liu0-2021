@@ -30,12 +30,15 @@ impl RxPort {
                     }
                 })
                 .expect("Serial read error");
+            if chunk_len == 0 {
+                continue;
+            }
 
             let chunk = &serial_buf[0..chunk_len];
             match accumulator.feed(chunk) {
-                Consumed => {} // Do nothing
+                Consumed => {}, // Do nothing
                 OverFull(c) => eprintln!("Accumulator full, dropping contents: {:?}", c),
-                DeserError(c) => eprintln!("Deserialize error, throwing away message: {:?}", c),
+                DeserError(c) => eprintln!("Deserialize error, throwing away message: {:?} ({:?})", c, chunk),
                 Success { data, .. } => on_msg(data),
             }
         }

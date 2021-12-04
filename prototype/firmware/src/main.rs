@@ -13,8 +13,9 @@ use hal::{
         p0::{self, P0_03, P0_04, P0_28, P0_29},
         Disconnected,
     },
+    gpiote::Gpiote,
     pac::{TIMER0, TIMER1, TWIM0, UARTE0},
-    ppi::{self, Ppi0, Ppi1},
+    ppi::{self, Ppi0, Ppi3},
     Twim,
 };
 
@@ -23,12 +24,12 @@ use firmware::pan_tilt::PanTilt;
 #[cfg(not(feature = "pan_tilt"))]
 use firmware::stubs::PanTilt;
 
+#[cfg(not(feature = "uart"))]
+use firmware::stubs::{CobsAccumulator, Uarte};
+#[cfg(feature = "uart")]
+use firmware::uarte::{Baudrate, Parity, Pins as UartePins, Uarte};
 #[cfg(feature = "uart")]
 use postcard::CobsAccumulator;
-#[cfg(feature = "uart")]
-use firmware::uarte::{Uarte, Baudrate, Parity, Pins as UartePins};
-#[cfg(not(feature = "uart"))]
-use firmware::stubs::{Uarte, CobsAccumulator};
 
 #[cfg(feature = "mic_array")]
 use firmware::mic_array::{MicArray, Pins as MicArrayPins};
@@ -41,7 +42,7 @@ type MicArrayInstance = MicArray<
     P0_28<Disconnected>,
     P0_29<Disconnected>,
     TIMER1,
-    Ppi1,
+    Ppi3,
 >;
 
 #[rtic::app(
@@ -71,29 +72,27 @@ const APP: () = {
         // Initialize UARTE0
         // Initialize port0
         let port0 = p0::Parts::new(ctx.device.P0);
-        let ppi = ppi::Parts::new(ctx.device.PPI);
+        let mut ppi = ppi::Parts::new(ctx.device.PPI);
 
         #[cfg(feature = "uart")]
         let (uarte0, accumulator) = {
+            use hal::gpio::Level;
             use hal::timer::Timer;
             // Receiving pin, initialize as input
             let rxd = port0.p0_08.into_floating_input().degrade();
 
             // Transmitting pin, initialize as output
-            let txd = port0
-                .p0_06
-                .into_push_pull_output(hal::gpio::Level::Low)
-                .degrade(); // Erase the type, creating a generic pin
+            let txd = port0.p0_06.into_push_pull_output(Level::Low).degrade(); // Erase the type, creating a generic pin
 
-            // let cts = port0.p0_07.into_floating_input().degrade();
-            // let rts = port0.p0_05.into_push_pull_output(Level::High).degrade();
+            let rts = port0.p0_05.into_push_pull_output(Level::High).degrade();
+            let cts = port0.p0_07.into_floating_input().degrade();
             // Create Pins struct to pass to Uarte
             let uart_pins = UartePins {
                 rxd,
                 txd,
                 // We don't use cts/rts
-                cts: None, // Clear to send pin
-                rts: None, // Request to send pin
+                cts: Some(cts), // Clear to send pin
+                rts: Some(rts), // Request to send pin
             };
 
             let mut timer0 = Timer::periodic(ctx.device.TIMER0);
@@ -151,11 +150,25 @@ const APP: () = {
                 ..SaadcConfig::default()
             };
 
+            let gpiote = Gpiote::new(ctx.device.GPIOTE);
             let mut timer1 = Timer::periodic(ctx.device.TIMER1);
+
+            let btn1_pin = port0.p0_11.into_pullup_input().degrade();
+            gpiote.channel1().input_pin(&btn1_pin).hi_to_lo();
+            ppi.ppi1.set_task_endpoint(timer1.task_stop());
+            ppi.ppi1.set_event_endpoint(gpiote.channel1().event());
+            ppi.ppi1.enable();
+
+            let btn2_pin = port0.p0_12.into_pullup_input().degrade();
+            gpiote.channel2().input_pin(&btn2_pin).hi_to_lo();
+            ppi.ppi2.set_task_endpoint(timer1.task_start());
+            ppi.ppi2.set_event_endpoint(gpiote.channel2().event());
+            ppi.ppi2.enable();
+
             timer1.start(1_000u32);
 
             let mut mic_array =
-                MicArray::new(ctx.device.SAADC, mic_pins, saadc_config, timer1, ppi.ppi1);
+                MicArray::new(ctx.device.SAADC, mic_pins, saadc_config, timer1, ppi.ppi3);
 
             mic_array.start_sampling_task();
             mic_array
@@ -239,7 +252,7 @@ const APP: () = {
             use firmware::uarte::StartTxResult::Busy;
 
             defmt::trace!("Sending message: {:?}", &msg);
-            let mut buf = [0; 1024];
+            let mut buf = [0; 2048];
             match postcard::to_slice_cobs(&msg, &mut buf) {
                 Ok(bytes) => {
                     while let Busy = ctx
@@ -324,9 +337,9 @@ const APP: () = {
                 samples: Some(samples.clone()),
                 ..DeviceToServer::default()
             };
-            ctx.spawn
-                .send_message(msg)
-                .expect("Error spawning send_message task");
+            if let Err(e) = ctx.spawn.send_message(msg) {
+                defmt::warn!("Error spawning send_message task: {:?}", e);
+            }
         }
     }
 
