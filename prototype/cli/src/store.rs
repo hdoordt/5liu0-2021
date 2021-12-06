@@ -14,11 +14,11 @@ impl<const N: usize> SampleStore<N> {
     pub fn new<P: AsRef<Path>>(path: P) -> io::Result<Self> {
         let file = File::create(path)?;
         Ok(Self {
-            writer: BufWriter::with_capacity(N,file),
+            writer: BufWriter::new(file),
         })
     }
 
-    pub fn store(&mut self, samples: SampleBuffer) -> Result<(), io::Error> {
+    pub fn store(&mut self, samples: &SampleBuffer) -> Result<(), io::Error> {
         (0..SampleBuffer::size()).into_iter().try_for_each(|i| {
             write!(
                 &mut self.writer,

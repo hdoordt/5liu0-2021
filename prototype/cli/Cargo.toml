@@ -5,10 +5,23 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[lib]
+name = "folley"
+crate-type = ["cdylib", "rlib"]
+
 [dependencies]
 serialport = "4.0.1"
 serde = "1.0.130"
 postcard = "0.7.2"
 clap = "2.33.3"
+once_cell = "1.8.0"
 
 folley-format = { path = "../format" }
+
+[dependencies.pyo3]
+version = "0.15.1"
+features = ["extension-module"]
+optional = true
+
+[features]
+default = ["pyo3"]
