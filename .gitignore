@@ -19,3 +19,6 @@ target
 
 # Measurement output
 *.csv
+
+# Python
+.pyenv

@@ -1,3 +1,6 @@
+#[cfg(not(feature = "cli"))]
+compile_error!("Please enable 'cli' feature to build CLI application");
+
 use clap::{App, Arg};
 use folley::serial::TxPort;
 use folley::store::SampleStore;
@@ -7,6 +10,7 @@ use serialport::{SerialPortType, UsbPortInfo};
 use std::io::{self, BufRead};
 use std::sync::mpsc;
 use std::thread;
+
 
 fn handle_message(msg: DeviceToServer) {
     println!("Got message: {:?}", msg);

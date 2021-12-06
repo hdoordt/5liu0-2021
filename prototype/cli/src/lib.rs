@@ -2,33 +2,28 @@ pub mod cmd;
 pub mod serial;
 pub mod store;
 
-use folley_format::{device_to_server::SampleBuffer, DeviceToServer};
+use folley_format::DeviceToServer;
 
-use once_cell::sync::Lazy;
 use serial::TxPort;
-use std::{
-    collections::VecDeque,
-    io,
-    sync::{
-        mpsc::{self, Sender},
-        Arc, Mutex,
-    },
-    thread,
-    time::Duration,
-};
+use std::{io, sync::mpsc::Sender, thread, time::Duration};
 
+#[cfg(feature = "pyo3")]
+use std::sync::{mpsc, Mutex};
+
+#[cfg(feature = "pyo3")]
+use once_cell::sync::Lazy;
 #[cfg(feature = "pyo3")]
 use pyo3::prelude::*;
 #[cfg(feature = "pyo3")]
 static SAMPLES: Lazy<Mutex<[Vec<i16>; 4]>> =
     Lazy::new(|| Mutex::new([vec![], vec![], vec![], vec![]]));
 
-#[cfg_attr(feature="pyo3", pyfunction)]
+#[cfg_attr(feature = "pyo3", pyfunction)]
 #[cfg(feature = "pyo3")]
 fn init(port_name: String, compress_factor: usize) -> PyResult<()> {
     assert!(
         compress_factor > 0,
-        "Compress factor must be greater than 0!"
+        "Compress factor must be greater than 0"
     );
     let (tx, rx) = mpsc::channel::<DeviceToServer>();
 
@@ -69,16 +64,17 @@ fn init(port_name: String, compress_factor: usize) -> PyResult<()> {
     PyResult::Ok(())
 }
 
-#[cfg_attr(feature="pyo3", pyfunction)]
+#[cfg_attr(feature = "pyo3", pyfunction)]
 #[cfg(feature = "pyo3")]
 fn get_samples() -> PyResult<[Vec<i16>; 4]> {
-    Ok(std::mem::replace(
+    let samples = std::mem::replace(
         &mut *SAMPLES.lock().unwrap(),
         [vec![], vec![], vec![], vec![]],
-    ))
+    );
+    Ok(samples)
 }
 
-#[cfg_attr(feature="pyo3", pymodule)]
+#[cfg_attr(feature = "pyo3", pymodule)]
 #[cfg(feature = "pyo3")]
 fn folley(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(init, m)?)?;
