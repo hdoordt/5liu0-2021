@@ -25,12 +25,13 @@ pub type MicArraySample = [i16; 4];
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[cfg_attr(feature = "defmt", derive(Format))]
 #[repr(transparent)]
-pub struct SampleBuffer(pub [MicArraySample; Self::size()]);
+pub struct SampleBuffer(#[serde(with = "BigArray")] pub [MicArraySample; Self::size()]);
 
 impl SampleBuffer {
-    const SIZE: usize = 32;
+    const SIZE: usize = 512;
 
     pub const fn size() -> usize {
+        // assert_eq!(Self::SIZE % 4, 0, "SampleBuffer size must be a multiple of 4");
         Self::SIZE
     }
 

@@ -83,7 +83,7 @@ fn folley(_py: Python, m: &PyModule) -> PyResult<()> {
 }
 
 pub fn connect(port_name: &str, tx: Sender<DeviceToServer>) -> io::Result<TxPort<32>> {
-    let port = serialport::new(port_name, 115200)
+    let port = serialport::new(port_name, 1000000)
         .flow_control(serialport::FlowControl::Hardware)
         .timeout(Duration::from_millis(500))
         .open()?;
@@ -91,7 +91,7 @@ pub fn connect(port_name: &str, tx: Sender<DeviceToServer>) -> io::Result<TxPort
     let tx_port: TxPort<32> = TxPort::new(port.try_clone().unwrap());
 
     let _rx_thread = thread::spawn(|| {
-        serial::RxPort::new(port).run_read_task::<_, 4096>(move |msg| tx.send(msg).unwrap())
+        serial::RxPort::new(port).run_read_task::<_, 8192>(move |msg| tx.send(msg).unwrap())
     });
 
     Ok(tx_port)

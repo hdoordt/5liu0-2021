@@ -16,7 +16,7 @@ use hal::{
     gpiote::Gpiote,
     pac::{TIMER0, TIMER1, TWIM0, UARTE0},
     ppi::{self, Ppi0, Ppi3},
-    Twim,
+    Twim, saadc::{Time, Resolution},
 };
 
 #[cfg(feature = "pan_tilt")]
@@ -96,14 +96,14 @@ const APP: () = {
             };
 
             let mut timer0 = Timer::periodic(ctx.device.TIMER0);
-            timer0.start(5u32); // 10 us
+            timer0.start(100_000u32); // 100 ms
 
             // Initialize UARTE0 peripheral with standard configuration
             let uarte0 = Uarte::init(
                 ctx.device.UARTE0, // Take peripheral handle by value
                 uart_pins,         // Take pins by value
                 Parity::EXCLUDED,
-                Baudrate::BAUD115200,
+                Baudrate::BAUD1M,
                 timer0,
                 ppi.ppi0,
             );
@@ -144,9 +144,11 @@ const APP: () = {
                 mic4: port0.p0_29,
             };
             let saadc_config = SaadcConfig {
+                resolution: Resolution::_14BIT,
                 oversample: Oversample::BYPASS,
                 resistor: Resistor::PULLDOWN,
                 gain: Gain::GAIN1_5,
+                time: Time::_3US,
                 ..SaadcConfig::default()
             };
 
@@ -165,7 +167,7 @@ const APP: () = {
             ppi.ppi2.set_event_endpoint(gpiote.channel2().event());
             ppi.ppi2.enable();
 
-            timer1.start(1_000u32);
+            timer1.start(120u32);
 
             let mut mic_array =
                 MicArray::new(ctx.device.SAADC, mic_pins, saadc_config, timer1, ppi.ppi3);
@@ -252,7 +254,7 @@ const APP: () = {
             use firmware::uarte::StartTxResult::Busy;
 
             defmt::trace!("Sending message: {:?}", &msg);
-            let mut buf = [0; 2048];
+            let mut buf = [0; 8192];
             match postcard::to_slice_cobs(&msg, &mut buf) {
                 Ok(bytes) => {
                     while let Busy = ctx
@@ -343,16 +345,9 @@ const APP: () = {
         }
     }
 
-    // RTIC requires that unused interrupts are declared in an extern block when
-    // using software tasks; these interrupts will be used to dispatch the
-    // software tasks.
-    // See https://rtic.rs/0.5/book/en/by-example/tasks.html;
     extern "C" {
-        // Software interrupt 0 / Event generator unit 0
         fn SWI0_EGU0();
-        // Software interrupt 1 / Event generator unit 1
         fn SWI1_EGU1();
-        // Software interrupt 2 / Event generator unit 2
         fn SWI2_EGU2();
     }
 };
