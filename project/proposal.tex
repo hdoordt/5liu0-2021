@@ -1,6 +1,3 @@
-
-    
-
 \documentclass[a4paper]{article}
 
 
@@ -12,56 +9,66 @@
 
 \begin{document}
 
-\title{{Folley: real-time sound origin locator} \\\large {Proposoal for the 5LIU0 DBL project}}
+\title{{Folley: real-time fly noise origin locator} \\\large {Proposoal for the 5LIU0 DBL project}}
 \author{{Henk Oordt} \hfill
 \\
 {1717510} \hfill}
 
 \maketitle
 
-\section{Introduction}
-Project `Folley' is aimed at the design and construction of a real-time sound origin locator. Folley uses audio signal analysis to detect and locate in 3D space sound-producing objects, such as flies and mosquitos, or speech. It then aims a low-power laser pointer in the direction of the origin of the. Optionally, Folley only reacts to certain sounds such as those produced by mosquitos or flies, and is thus able to filter out noise and entities that are not deemed interesting. However, this functionality is deemed nice-to-have.
+\section{Introduction and overview}
+Project `Folley' is aimed at the design and construction of a real-time sound origin locator. Folley uses audio signal analysis to detect and locate in 3D space the origin of the buzzing sound of flies. It then aims a low-power laser pointer in the direction of the origin of the sound.
 
-In order to locate a sound's origin, it samples audio signal from an array analog microphones. The signals are analyzed in order to calculate a time-delay-angle-of-arrival \cite{6327613}, which along with the known microphone setup, can be used to calculate the azimuth and altitude angles of the origin with respect to the microphone array of the device.
+In order to locate the sound's origin, Folley samples audio signal from an array of four analog microphones. The signals are filtered using a software-implemented Finite Impulse Response (FIR) band pass filter, which isolates a to be selected distinctive harmonic frequency of the buzzing sound. This frequency is selected by doing a Fourier analysis \cite{fourier_analysis} of the sound, from which can be obtained a harmonic frequency that has a high amplitude, and preferably a relatively low frequency, making it suitable for peak detection \cite{peak_detection}. The filtered signals are then analyzed in order to calculate a time-delay-angle-of-arrival (TDOA) \cite{6327613} which, along with the known microphone setup dimensions, can be used to calculate the azimuth and altitude angles of the origin with respect to the microphone array of the device.
 
-The microphone array as well as the laser diode is mounted to a servo-powered pan-tilt bracket, which is being used to point the microphones and the laser diode in the direction of the origin of the sound. On top of this, the rate of change in power of the signal of interest as the microphones are panned and tilted is used as an additional heuristic with which the estimate of the location can be improved. All of this is controlled by a Nordic Semiconductor nRF52840 microcontroller \cite{nrf52840-dk}, for which firmware is to be customly written in Rust \cite{rust}. This microcontroller is able to sample up to 8 analog inputs, and can control the servo motors of the pan-tilt bracket using pulse-width modulation or PWM \cite{GULYAEV20161529}. The board can also easily be set up for serial communication over USB \cite{usb}.
+The microphone array as well as the laser diode is mounted to a servo-powered pan-tilt bracket, which is being used to point the microphones and the laser diode in the direction of the origin of the sound given the TDOA analysis output. All of this is controlled by a Nordic Semiconductor nRF52840 microcontroller, mounted on a nRF52840DK board \cite{nrf52840-dk}, for which firmware is to be customly written in Rust \cite{rust}. This microcontroller is able to sample up to 8 analog inputs, and can control the servo motors of the pan-tilt bracket using pulse-width modulation (PWM) \cite{GULYAEV20161529} with the help of a PCA9685 \cite{pca9685} PWM controller, significantly simplifying the control of the pan-tilt bracket positioning. The nRF52840dk board can also relatively easily be set up for serial communication over USB \cite{usb}, enabling running real-time analysis and graph plotting on a host computer for development ease.
 
-In order to develop the analysis algorithms, a set of Matlab \cite{matlab} scripts is provided, which given the raw audio signal measurements, can calculate the azimuth and altitude angles of the sounds origin with respect to the microphone array, the rate of change in audio signal power, and optionally a discrimination between sounds. These scripts will be used to verify the analysis implementation in firmware.
+In order to develop the FIR filter and the TDOA analysis software, a set of Matlab \cite{matlab} scripts is written, which given the raw audio signal measurements, can filter out noise, isolate the selected harmonic frequency, and calculate the azimuth and altitude angles of the sounds origin with respect to the microphone array. Essentially, in these scripts all of the signal analysis calculations that are needed to reach the project goals are implemented. These Matlab scripts will serve as a basis and a means of verification for the Rust implementation of the algorithm in firmware. Upon completion of the Matlab scripts and tweaking of parameters, the calculations are re-implemented in Rust, in order for the analysis to be done by the microcontroller on the nRF52840dk board in real time.
 
-A command line application written in Rust that can communicate with the device and that converts raw microphone measurements to Matlab input files is to be developed as well.
+A simple command line application written in Rust that can communicate with the device and that converts raw microphone measurements to Matlab input files is to be developed as well.
+
+The focus of this project is on sampling the microphone data, isolating a fly buzzing sound harmonic using a FIR filter, and doing the TDOA analysis on the filtered signal. Controlling the servo powered pan-tilt bracket should be as easy as calculating the PWM parameters from the angle deltas that are obtained from this analysis and will therefore only of minor focus within this project. 
 
 \section{Goals}
+
+\subsection{Qualitative goals}
 \begin{itemize}
     \item Build a simple device using a nRF52840 development board, multiple microphones with respective amplifiers, a servo-powered pan-tilt bracket, a PWM controller, a regulator and a laser diode. The device will consist of various breakout boards, connected with jumper wires. The laser diode and the microphones are mounted on the pan-tilt bracket.
     \item Draw a circuit diagram, visualizing the way components are connected in the device.
-    \item Implement a firmware application, that is able to send raw microphone measurement data over UART\cite{uart} to a command line application running on a host computer.
-    \item Implement a command line application that can receive raw microphone measurements, and store them in a format that can be read by a Matlab application.
-    \item Implement a Matlab script that can read raw microphone measurements from a file written by the command line application, and calculate using time-delay-angle-of-arrival analysis the angle an incoming sound signal originated from with respect to the microphone array.
-    \item Implement a Matlab script that can read raw microphone measurements from a file written by the command line application, and calculate the power of the sound signal.
-    \item Add functionality to the firmware application that allows it to do the calculations as implemented in the Matlab scripts.
-    \item Add functionality to the firmware application that enables it to control a servo-powered pan-tilt bracket.
-    \item Add functionality to the firmware application that allows it to point the laser in the direction of the sounds origin, using the time-delay-angle-of-arrival analysis and the signal power analysis.
-    \item (Optional) Implement a Matlab script that can read raw microphone measurements from a file written by the command line application, analyze the waveform, and can decide whether or not it originated from a flying insect or speech.
-    \item (Optional) Add functionality to the firmware application that enables it to discriminate audio signals and act only upon detection of predefined sounds.
-\end{itemize}
+    \item Implement a firmware application, that is able to send raw microphone measurement data over a serial port (UART \cite{uart} or USB) to a command line application running on a host computer.
+    \item Implement a command line application that can receive raw microphone measurements from a serial port, and store them in a format that can be read by a Matlab application.
+    \item Do a fourier analysis of the fly buzzing sound, selecting a harmonic frequency that is used for TDOA analysis.
+    \item Implement in Matlab a FIR filter script that can read raw microphone measurements from a file written by the command line application, and attenuates any noise that is not produced by the fly buzzing. The implemented FIR filter isolates a selected harmonic frequency of the fly noise for further analysis.
+    \item Implement a Matlab script that can read the filtered signal data and calculate using peak detection and time-delay-angle-of-arrival analysis the angle an incoming sound signal with respect to the microphone array position.
+    \item Add functionality to the firmware application written in Rust that allows it to do the calculations as implemented in the Matlab scripts. Essentially, re-implement the Matlab scripts in Rust in order for the analysis to be run on the microcontroller.
+    \item Add functionality to the firmware application that enables it to control a servo-powered pan-tilt bracket using PWM.
+    \item Add functionality to the firmware application that allows it to point the laser in the direction of the sounds origin, using the FIR filter and the TDOA analysis in real time.
+\end{itemize} 
 
-- 
+\subsection{Quantitative goals}
+\begin{itemize}
+    \item The FIR filter is be able to ... [TODO]
+    \item The TDOA analysis is able to calculate the azimuth and altitude angles within a 10 degree error margin 80\% of the time.
+\end{itemize}
 
 \section{Challenges}
 \begin{itemize}
-    \item The microcontroller may not have enough computing power to do all of the analysis in real time. In this case, the signal analysis and control calculations will be offloaded to the command line application running on a laptop or PC. The command line application will be sending the device firmware commands, indicating to which angle the servo motors should be moved.
+    \item The microcontroller may not have enough computing power to do all of the analysis in real time. In this case, the signal analysis and control calculations will be offloaded to the command line application running on a laptop or PC. The command line application will be sending the device firmware commands, indicating to which angle the servo motors should be moved. Either way, the analysis algorithm will be written in Rust.
     \item The microphone and amplifier setup may not be able to have the system obtain a strong and clear enough signal. In this case, the sounds volume will be increased. If that does not help enough, a more distinct sound signal will be produced.
     \item The microcontroller may not be able to sample the sound signal quickly enough, or with high enough resolution. In this case, a dedicated ADC will be added to the system.
+    
+\textit{The necessary hardware has already been purchased and is available.}
 
 \end{itemize}
 \section{Deliverables}
 \begin{itemize}
     \item A diagram of the components used in the device and the connections between them.
-    \item A schematic drawing of the microphone setup
+    \item A schematic drawing of the microphone array setup.
     \item A literature study in which is gathered theories on the various analysis methods used.
-    \item A set of Matlab scripts that implements the TDOA analysis, the signal power analysis, and optionally the sound classification,
-    \item Source code of a firmware application that is able to record microphone measurements
-    \item Source code of a command line application that connects with the device and obtains raw measurement data, and if necessary, runs the analyses and control algorithms.
+    \item A Fourier analysis of the fly buzzing sound based on which a frequency is selected with which TDOA analysis is done. Additionally, an description of how this frequency is come up with.
+    \item A set of Matlab scripts that implements the band-pass filtering and the TDOA analysis. The band-pass filter script takes as input the raw microphone samples, and outputs a signal in which noise is attenuated. The TDOA analysis script takes as input the filtered signal, and outputs the azimuth and altitude angles the audio signal originated from with respect to the microphone array.
+    \item Source code of a firmware application written in Rust that is able to record microphone measurements, filter and analyze the data and control the pan-tilt bracket. This source code re-implements the filtering and analysis algorithm developed in Matlab in the previous deliverable.
+    \item Source code of a command line application written in Rust that connects with the device and obtains raw measurement data and stores it in a format that can be read by Matlab.
     \item A report documenting the process and the outcomes.
     \item A video recording demostrating the device performance.
 \end{itemize}
