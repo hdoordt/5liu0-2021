@@ -74,10 +74,15 @@ const APP: () = {
         let port0 = p0::Parts::new(ctx.device.P0);
         let mut ppi = ppi::Parts::new(ctx.device.PPI);
 
+        let clocks = Clocks::new(ctx.device.CLOCK);
+        clocks.enable_ext_hfosc();
+
         #[cfg(feature = "uart")]
         let (uarte0, accumulator) = {
             use hal::gpio::Level;
             use hal::timer::Timer;
+            use hal::Clocks;
+
             // Receiving pin, initialize as input
             let rxd = port0.p0_08.into_floating_input().degrade();
 
