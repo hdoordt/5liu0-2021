@@ -29,6 +29,19 @@ A simple command line application written in Rust that can communicate with the 
 
 The focus of this project is on sampling the microphone data, isolating a fly buzzing sound harmonic using a FIR filter, and doing the TDOA analysis on the filtered signal. Controlling the servo powered pan-tilt bracket should be as easy as calculating the PWM parameters from the angle deltas that are obtained from this analysis and will therefore only of minor focus within this project. 
 
+\section{Steps}
+\begin{enumerate}
+    \item Set up simple firmware that samples with ADC, sends measurements to PC and controls pan-tilt brackend given angle deltas. Set up CLI application for recording ADC samples.
+    \item Get TDOA working with a set of sine waves generated in Matlab
+    \item Re-implement the algorithm in Rust and validate using a test
+    \item Sample a sine wave from signal generator and test TDOA. Update algorithm where necessary
+    \item Do fourier analysis on a recording of a fly buzzing sound, define a destinctive harmonic frequency for use in analysis
+    \item Implement a FIR filter that isolates the selected harmonic. The input signal is the buzzing sound, the output a simple sine wave signal.
+    \item Feed the output of the FIR filter to the TDOA analysis in Matlab and get it working
+    \item Re-implement the FIR filter in Rust.
+\end{enumerate}
+
+
 \section{Goals}
 
 \subsection{Qualitative goals}
