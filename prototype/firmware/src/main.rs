@@ -16,7 +16,7 @@ use hal::{
     gpiote::Gpiote,
     pac::{TIMER0, TIMER1, TWIM0, UARTE0},
     ppi::{self, Ppi0, Ppi3},
-    Twim, saadc::{Time, Resolution},
+    Twim, saadc::{Time, Resolution}, Clocks,
 };
 
 #[cfg(feature = "pan_tilt")]
@@ -35,6 +35,9 @@ use postcard::CobsAccumulator;
 use firmware::mic_array::{MicArray, Pins as MicArrayPins};
 #[cfg(not(feature = "mic_array"))]
 use firmware::stubs::MicArray;
+
+// sample period in microseconds
+const T_S_US: u32 = 125;
 
 type MicArrayInstance = MicArray<
     P0_03<Disconnected>,
@@ -81,7 +84,6 @@ const APP: () = {
         let (uarte0, accumulator) = {
             use hal::gpio::Level;
             use hal::timer::Timer;
-            use hal::Clocks;
 
             // Receiving pin, initialize as input
             let rxd = port0.p0_08.into_floating_input().degrade();
@@ -172,7 +174,7 @@ const APP: () = {
             ppi.ppi2.set_event_endpoint(gpiote.channel2().event());
             ppi.ppi2.enable();
 
-            timer1.start(120u32);
+            timer1.start(T_S_US);
 
             let mut mic_array =
                 MicArray::new(ctx.device.SAADC, mic_pins, saadc_config, timer1, ppi.ppi3);
