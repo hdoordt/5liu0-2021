@@ -34,7 +34,7 @@ fn run<const N: usize>(mut tx_port: TxPort<N>) {
 }
 
 fn main() {
-    let matches = App::new("Device commander")
+    let matches = App::new("Folley commander")
         .version("0.1")
         .arg(
             Arg::with_name("OUT_FILE")
