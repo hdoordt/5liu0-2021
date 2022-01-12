@@ -7,6 +7,13 @@ import numpy as np
 
 import folley
 import sys
+import signal
+
+
+def handler(signum, frame):
+    print("exit")
+    sys.exit(0)
+
 
 class DynamicPlotter():
 
@@ -23,7 +30,7 @@ class DynamicPlotter():
         self.plt.resize(*size)
         self.plt.showGrid(x=True, y=True)
         self.plt.setLabel('left', 'amplitude', 'V')
-        self.plt.setLabel('bottom', 'time', 's')
+        self.plt.setLabel('bottom', 'samples', 'n')
         
         self.databuffers = []
         self.curves = []
@@ -64,6 +71,9 @@ class DynamicPlotter():
         self.app.exec_()
 
 if __name__ == '__main__':
+
+    signal.signal(signal.SIGINT, handler)
+
     print(sys.argv)
-    m = DynamicPlotter(sampleinterval=0.02, timewindow=100., cr=1)
+    m = DynamicPlotter(sampleinterval=0.02, timewindow=1000., cr=1)
     m.run()
