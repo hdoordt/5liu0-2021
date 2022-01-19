@@ -138,6 +138,7 @@ where
         }
         if self.uarte.events_endtx.read().events_endtx().bit_is_set() {
             self.uarte.events_endtx.reset();
+            defmt::trace!("UARTE ENDTX raised");
             self.endtx_raised = true;
             return Some(UarteEvent::EndTx);
         }

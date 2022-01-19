@@ -18,7 +18,8 @@ target
 *.blg
 
 # Measurement output
-*.csv
+data/
+
 
 # Python
 .pyenv

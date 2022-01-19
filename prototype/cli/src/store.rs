@@ -4,7 +4,7 @@ use std::{
     path::Path,
 };
 
-use folley_format::device_to_server::SampleBuffer;
+use folley_format::device_to_server::MicArraySample;
 
 pub struct SampleStore<const N: usize> {
     writer: BufWriter<File>,
@@ -18,8 +18,8 @@ impl<const N: usize> SampleStore<N> {
         })
     }
 
-    pub fn store(&mut self, samples: &SampleBuffer) -> Result<(), io::Error> {
-        (0..SampleBuffer::size()).into_iter().try_for_each(|i| {
+    pub fn store(&mut self, samples: &[MicArraySample]) -> Result<(), io::Error> {
+        (0..samples.len()).into_iter().try_for_each(|i| {
             write!(
                 &mut self.writer,
                 "{},{},{},{}\n",

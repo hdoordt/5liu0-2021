@@ -18,10 +18,10 @@ pub fn connect(port_name: &str, tx: Sender<DeviceToServer>) -> io::Result<TxPort
         .timeout(Duration::from_millis(500))
         .open()?;
 
-    let tx_port: TxPort<32> = TxPort::new(port.try_clone().unwrap());
+    let tx_port= TxPort::new(port.try_clone().unwrap());
 
     let _rx_thread = thread::spawn(|| {
-        serial::RxPort::new(port).run_read_task::<_, 8192>(move |msg| tx.send(msg).unwrap())
+        serial::RxPort::new(port).run_read_task::<_, 16384>(move |msg| tx.send(msg).unwrap())
     });
 
     Ok(tx_port)

@@ -1,5 +1,3 @@
-use core::ops::{Deref, DerefMut};
-
 #[cfg(feature = "defmt")]
 use defmt::Format;
 use serde::{Deserialize, Serialize};
@@ -7,11 +5,12 @@ use serde::{Deserialize, Serialize};
 use serde_big_array::big_array;
 big_array! { BigArray; }
 
-#[derive(Serialize, Deserialize, Debug, Default)]
+#[derive(Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "defmt", derive(Format))]
-pub struct DeviceToServer {
-    pub pan_tilt: Option<PanTiltStatus>,
-    pub samples: Option<SampleBuffer>,
+pub enum DeviceToServer {
+    PanTilt(PanTiltStatus),
+    #[serde(with = "BigArray")]
+    Samples([MicArraySample;1024]),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy)]
@@ -22,33 +21,3 @@ pub struct PanTiltStatus {
 }
 
 pub type MicArraySample = [i16; 4];
-#[derive(Serialize, Deserialize, Debug, Clone)]
-#[cfg_attr(feature = "defmt", derive(Format))]
-#[repr(transparent)]
-pub struct SampleBuffer(#[serde(with = "BigArray")] pub [MicArraySample; Self::size()]);
-
-impl SampleBuffer {
-    const SIZE: usize = 512;
-
-    pub const fn size() -> usize {
-        // assert_eq!(Self::SIZE % 4, 0, "SampleBuffer size must be a multiple of 4");
-        Self::SIZE
-    }
-
-    pub const fn new_empty() -> Self {
-        Self([[0; 4]; Self::size()])
-    }
-}
-impl Deref for SampleBuffer {
-    type Target = [MicArraySample; Self::size()];
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl DerefMut for SampleBuffer {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}

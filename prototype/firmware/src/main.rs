@@ -1,6 +1,7 @@
 #![no_std]
 #![no_main]
 
+use firmware::mic_array;
 use folley_firmware as firmware;
 use nrf52840_hal as hal;
 
@@ -37,7 +38,7 @@ use firmware::mic_array::{MicArray, Pins as MicArrayPins};
 use firmware::stubs::MicArray;
 
 // sample period in microseconds
-const T_S_US: u32 = 125;
+const T_S_US: u32 = 74;
 
 type MicArrayInstance = MicArray<
     P0_03<Disconnected>,
@@ -151,11 +152,11 @@ const APP: () = {
                 mic4: port0.p0_29,
             };
             let saadc_config = SaadcConfig {
-                resolution: Resolution::_14BIT,
+                resolution: Resolution::_12BIT,
                 oversample: Oversample::BYPASS,
                 resistor: Resistor::PULLDOWN,
                 gain: Gain::GAIN1_5,
-                time: Time::_3US,
+                time: Time::_5US,
                 ..SaadcConfig::default()
             };
 
@@ -232,7 +233,7 @@ const APP: () = {
                 pan_tilt_status.tilt_deg = deg;
                 pan_tilt.tilt_deg(deg);
             }
-            pan_tilt_status
+            ctx.spawn.send_message(DeviceToServer::PanTilt(pan_tilt_status)).ok();
         };
         #[cfg(feature = "mic_array")]
         {
@@ -243,14 +244,6 @@ const APP: () = {
                 None => {}
             }
         }
-
-        ctx.spawn
-            .send_message(DeviceToServer {
-                #[cfg(feature = "pan_tilt")]
-                pan_tilt: Some(*pan_tilt_status),
-                ..DeviceToServer::default()
-            })
-            .ok();
     }
 
     #[task(capacity = 10, resources = [uarte0], priority  = 1)]
@@ -261,7 +254,7 @@ const APP: () = {
             use firmware::uarte::StartTxResult::Busy;
 
             defmt::trace!("Sending message: {:?}", &msg);
-            let mut buf = [0; 8192];
+            let mut buf = [0; 8192 * 2];
             match postcard::to_slice_cobs(&msg, &mut buf) {
                 Ok(bytes) => {
                     while let Busy = ctx
@@ -339,16 +332,22 @@ const APP: () = {
         {
             let mic_array = ctx.resources.mic_array;
 
-            let samples = mic_array.get_samples_and_start();
+            #[cfg(feature = "record")]
+            mic_array.stop_sampling_task();
+            #[cfg(not(feature = "record"))]
+            mic_array.start_sampling_task();
 
-            defmt::trace!("Sample ready!, {:?}", &samples);
-            let msg = DeviceToServer {
-                samples: Some(samples.clone()),
-                ..DeviceToServer::default()
-            };
-            if let Err(e) = ctx.spawn.send_message(msg) {
-                defmt::warn!("Error spawning send_message task: {:?}", e);
+            let samples = mic_array.get_newest_samples();
+            
+            for c in samples.chunks(1024) {
+                let msg = DeviceToServer::Samples(c.try_into().unwrap());
+                if let Err(e) = ctx.spawn.send_message(msg) {
+                    defmt::warn!("Error spawning send_message task");
+                }
             }
+
+            defmt::trace!("Sample ready!");
+            
         }
     }
 
