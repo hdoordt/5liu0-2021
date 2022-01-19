@@ -1,6 +1,7 @@
 #![no_std]
 #![no_main]
 
+use firmware::mic_array;
 use folley_firmware as firmware;
 use nrf52840_hal as hal;
 
@@ -37,7 +38,7 @@ use firmware::mic_array::{MicArray, Pins as MicArrayPins};
 use firmware::stubs::MicArray;
 
 // sample period in microseconds
-const T_S_US: u32 = 125;
+const T_S_US: u32 = 14;
 
 type MicArrayInstance = MicArray<
     P0_03<Disconnected>,
@@ -103,14 +104,14 @@ const APP: () = {
             };
 
             let mut timer0 = Timer::periodic(ctx.device.TIMER0);
-            timer0.start(100_000u32); // 100 ms
+            // timer0.start(100_000u32); // 100 ms
 
             // Initialize UARTE0 peripheral with standard configuration
             let uarte0 = Uarte::init(
                 ctx.device.UARTE0, // Take peripheral handle by value
                 uart_pins,         // Take pins by value
                 Parity::EXCLUDED,
-                Baudrate::BAUD1M,
+                Baudrate::BAUD4800,
                 timer0,
                 ppi.ppi0,
             );
@@ -151,7 +152,7 @@ const APP: () = {
                 mic4: port0.p0_29,
             };
             let saadc_config = SaadcConfig {
-                resolution: Resolution::_14BIT,
+                resolution: Resolution::_12BIT,
                 oversample: Oversample::BYPASS,
                 resistor: Resistor::PULLDOWN,
                 gain: Gain::GAIN1_5,
@@ -232,7 +233,7 @@ const APP: () = {
                 pan_tilt_status.tilt_deg = deg;
                 pan_tilt.tilt_deg(deg);
             }
-            pan_tilt_status
+            ctx.spawn.send_message(DeviceToServer::PanTilt(pan_tilt_status)).ok();
         };
         #[cfg(feature = "mic_array")]
         {
@@ -243,17 +244,9 @@ const APP: () = {
                 None => {}
             }
         }
-
-        ctx.spawn
-            .send_message(DeviceToServer {
-                #[cfg(feature = "pan_tilt")]
-                pan_tilt: Some(*pan_tilt_status),
-                ..DeviceToServer::default()
-            })
-            .ok();
     }
 
-    #[task(capacity = 10, resources = [uarte0], priority  = 1)]
+    #[task(capacity = 128, resources = [uarte0], priority  = 1)]
     #[cfg_attr(not(feature = "uart"), allow(unused_variables, unused_mut))]
     fn send_message(mut ctx: send_message::Context, msg: DeviceToServer) {
         #[cfg(feature = "uart")]
@@ -261,7 +254,7 @@ const APP: () = {
             use firmware::uarte::StartTxResult::Busy;
 
             defmt::trace!("Sending message: {:?}", &msg);
-            let mut buf = [0; 8192];
+            let mut buf = [0; 1024];
             match postcard::to_slice_cobs(&msg, &mut buf) {
                 Ok(bytes) => {
                     while let Busy = ctx
@@ -338,17 +331,20 @@ const APP: () = {
         #[cfg(feature = "mic_array")]
         {
             let mic_array = ctx.resources.mic_array;
+            mic_array.stop_sampling_task();
 
-            let samples = mic_array.get_samples_and_start();
-
-            defmt::trace!("Sample ready!, {:?}", &samples);
-            let msg = DeviceToServer {
-                samples: Some(samples.clone()),
-                ..DeviceToServer::default()
-            };
-            if let Err(e) = ctx.spawn.send_message(msg) {
-                defmt::warn!("Error spawning send_message task: {:?}", e);
+            let samples = mic_array.get_newest_samples();
+            
+            for c in samples.chunks(32) {
+                // TODO
+                let msg = DeviceToServer::Samples(c.try_into().unwrap());
+                if let Err(e) = ctx.spawn.send_message(msg) {
+                    defmt::warn!("Error spawning send_message task: {:?}", e);
+                }
             }
+
+            defmt::trace!("Sample ready!, {:?}", defmt::Debug2Format(&samples));
+            
         }
     }
 

@@ -13,7 +13,7 @@ use serial::TxPort;
 use std::{io, sync::mpsc::Sender, thread, time::Duration};
 
 pub fn connect(port_name: &str, tx: Sender<DeviceToServer>) -> io::Result<TxPort<32>> {
-    let port = serialport::new(port_name, 1000000)
+    let port = serialport::new(port_name, 4800)
         .flow_control(serialport::FlowControl::Hardware)
         .timeout(Duration::from_millis(500))
         .open()?;

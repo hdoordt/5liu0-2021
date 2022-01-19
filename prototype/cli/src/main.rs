@@ -11,7 +11,6 @@ use std::io::{self, BufRead};
 use std::sync::mpsc;
 use std::thread;
 
-
 fn handle_message(msg: DeviceToServer) {
     println!("Got message: {:?}", msg);
     // TODO, do cool stuff with the message that just came in.
@@ -59,12 +58,14 @@ fn main() {
 
     let rx_thread = thread::spawn(move || {
         for msg in rx.into_iter() {
-            if let Some(samples) = &msg.samples {
-                store
-                .as_mut()
-                .map(|s: &mut SampleStore<64>| s.store(samples).unwrap());    
-                
-            }
+            match msg {
+                DeviceToServer::Samples(samples) => {
+                    store
+                        .as_mut()
+                        .map(|s: &mut SampleStore<64>| s.store(&samples).unwrap());
+                }
+                _ => {}
+            };
             handle_message(msg);
         }
     });
