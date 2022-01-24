@@ -3,6 +3,7 @@ members = [
     "prototype/firmware",
     "prototype/format",
     "prototype/cli",
+    "prototype/calc",
 ]
 
 
