@@ -1,8 +1,12 @@
+#![cfg_attr(not(feature = "std"), no_std)]
+
 const V_SOUND: i32 = 343;
 
+/// Calculate the cross-correlation of real-valued signals x and y. The result is put in the output buffer.
+/// Make sure x and y are of the same length M, and the output buffer is of length N = 2* M -1.M
 #[allow(non_snake_case)]
-fn xcorr_real<const N: usize, const M: usize>(x: &[i16; M], y: &[i16; M], out: &mut [u32; N]) {
-    debug_assert_eq!(N, M * 2 - 1);
+pub fn xcorr_real<const N: usize, const M: usize>(x: &[i16; M], y: &[i16; M], out: &mut [u32; N]) {
+    debug_assert_eq!(N, 2 * M - 1);
     // This method may be improved by taking the Fourier transform X and Y of each of the signals x and Y,
     // multiplying the output of X with the complex conjugate of Y, and reverse-transform the product.
     for n in 0..N {
@@ -19,8 +23,10 @@ fn xcorr_real<const N: usize, const M: usize>(x: &[i16; M], y: &[i16; M], out: &
     }
 }
 
+/// Calculate the lag in sample numbers of signals x and y using cross-correlation. The buffer is used
+/// to store the cross-correlation output.
 #[allow(non_snake_case)]
-fn calc_lag<const N: usize, const M: usize>(
+pub fn calc_lag<const N: usize, const M: usize>(
     x: &[i16; M],
     y: &[i16; M],
     buf: &mut [u32; N],
@@ -36,7 +42,8 @@ fn calc_lag<const N: usize, const M: usize>(
         .unwrap()
 }
 
-fn calc_angle<
+/// Calculate the angle of an audio source, using the cross correlation of two signals.
+pub fn calc_angle<
     const T_S_US: u32,
     const D_MICS_MM: u32,
     const N: usize,
@@ -46,25 +53,26 @@ fn calc_angle<
     x: &[i16; M],
     y: &[i16; M],
     buf: &mut [u32; N],
-    lag_table: &LagTable<K>,
+    lag_table: &[u32; K],
 ) -> u32 {
     let lag = calc_lag(x, y, buf) as i32;
     lag_to_angle::<T_S_US, D_MICS_MM, K>(lag, lag_table)
 }
 
-fn lag_to_angle<const T_S_US: u32, const D_MICS_MM: u32, const N: usize>(lag: i32, table: &LagTable<N>) -> u32 {
-    // TODO generate the table once only
-    // let table = gen_lag_table::<T_S_US, D_MICS_MM, N>();
-    let i = lag + N as i32 / 2;
+pub fn lag_to_angle<const T_S_US: u32, const D_MICS_MM: u32, const K: usize>(
+    lag: i32,
+    table: &[u32; K],
+) -> u32 {
+    let i = lag + K as i32 / 2;
     table[i as usize]
 }
 
-fn gen_lag_table<const T_S_US: u32, const D_MICS_MM: u32, const N: usize>() -> [u32; N] {
-    debug_assert_eq!(N, expected_lags_size(T_S_US, D_MICS_MM));
-    let mut table = [0u32; N];
+pub fn gen_lag_table<const T_S_US: u32, const D_MICS_MM: u32, const K: usize>() -> [u32; K] {
+    debug_assert_eq!(K, expected_lags_size(T_S_US, D_MICS_MM));
+    let mut table = [0u32; K];
 
     table.iter_mut().enumerate().for_each(|(lag, angle)| {
-        let lag = lag as i32 - N as i32 / 2;
+        let lag = lag as i32 - K as i32 / 2;
         let cos_theta = (lag * T_S_US as i32 * V_SOUND) / D_MICS_MM as i32;
         let theta = ACOS_TABLE
             .iter()
@@ -77,14 +85,12 @@ fn gen_lag_table<const T_S_US: u32, const D_MICS_MM: u32, const N: usize>() -> [
     table
 }
 
-const fn expected_lags_size(sample_period_us: u32, mic_distance_mm: u32) -> usize {
+pub const fn expected_lags_size(sample_period_us: u32, mic_distance_mm: u32) -> usize {
     (mic_distance_mm * 1000 / (sample_period_us * V_SOUND as u32)) as usize * 2 + 1
 }
 
-
-type LagTable<const N: usize> = [u32; N];
-
 #[cfg(test)]
+#[cfg(feature = "std")]
 mod test {
     use std::{
         cmp::Ordering,
@@ -93,7 +99,7 @@ mod test {
 
     use folley_format::device_to_server::MicArraySample;
 
-    use crate::{calc_angle, lag_to_angle, gen_lag_table};
+    use crate::*;
 
     struct Channels<const N: usize> {
         pub ch1: [i16; N],
@@ -149,7 +155,7 @@ mod test {
         let channels = to_channels(samples);
 
         let mut out = [0u32; N];
-        crate::xcorr_real(&channels.ch1, &channels.ch2, &mut out);
+        xcorr_real(&channels.ch1, &channels.ch2, &mut out);
 
         let _: Vec<_> = (0..M).map(|i| assert_eq!(out[i], EXPECTED[i])).collect();
     }
@@ -161,7 +167,7 @@ mod test {
         let samples: [_; M] = read_samples::<M>().try_into().unwrap();
         let channels = to_channels(samples);
         let mut buf = [0u32; N];
-        let lag = crate::calc_lag(&channels.ch1, &channels.ch2, &mut buf);
+        let lag = calc_lag(&channels.ch1, &channels.ch2, &mut buf);
         assert_eq!(lag, 3);
     }
 
@@ -173,7 +179,8 @@ mod test {
         let channels = to_channels(samples);
         let mut buf = [0u32; N];
         let lag_table = gen_lag_table::<74, 125, 9>();
-        let theta = calc_angle::<74, 125, N, M, 9>(&channels.ch1, &channels.ch2, &mut buf, &lag_table);
+        let theta =
+            calc_angle::<74, 125, N, M, 9>(&channels.ch1, &channels.ch2, &mut buf, &lag_table);
         assert_eq!(theta, 53);
     }
 
@@ -235,9 +242,9 @@ mod test {
             (26, 3),
         ];
         let lag_table = gen_lag_table::<14, 125, 53>();
-        FLOORED_LAG_ANGLES
-            .iter()
-            .for_each(|(lag, angle)| assert_eq!(lag_to_angle::<14, 125, 53>(*lag, &lag_table), *angle));
+        FLOORED_LAG_ANGLES.iter().for_each(|(lag, angle)| {
+            assert_eq!(lag_to_angle::<14, 125, 53>(*lag, &lag_table), *angle)
+        });
     }
 }
 
