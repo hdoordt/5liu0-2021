@@ -6,22 +6,34 @@ const V_SOUND: i32 = 343;
 /// Calculate the cross-correlation of real-valued signals x and y. The result is put in the output buffer.
 /// Make sure x and y are of the same length M, and the output buffer is of length N = 2* M -1.M
 #[allow(non_snake_case)]
-pub fn xcorr_real<const N: usize, const M: usize>(x: &[i16; M], y: &[i16; M], out: &mut [u32; N]) {
+pub fn xcorr_real<const N: usize, const M: usize>(
+    x: &[i16; M],
+    y: &[i16; M],
+    out: &mut [i32; N],
+) -> usize {
     debug_assert_eq!(N, 2 * M - 1);
     // This method may be improved by taking the Fourier transform X and Y of each of the signals x and Y,
     // multiplying the output of X with the complex conjugate of Y, and reverse-transform the product.
+    let mut argmax = 0;
+    let mut max = 0;
     for n in 0..N {
         for m in 0..M {
-            let y_val = y[m] as u32;
-            let x_index = (n + m) as isize - (N as isize) / 2;
-            let x_val = if x_index >= 0 {
-                *x.get(x_index as usize).unwrap_or(&0)
+            let x_val = x[m] as i32;
+            let y_index = (n + m) as isize - (N as isize) / 2;
+            let y_val = if y_index >= 0 {
+                *y.get(y_index as usize).unwrap_or(&0)
             } else {
                 0
-            } as u32;
+            } as i32;
+            // defmt::println!("X index: {}, val: {}, y index: {}, val: {}", x_index, x_val, m, y_val);
             out[n] += x_val * y_val;
         }
+        if out[n] > max {
+            max = out[n];
+            argmax = n;
+        }
     }
+    argmax
 }
 
 /// Calculate the lag in sample numbers of signals x and y using cross-correlation. The buffer is used
@@ -30,17 +42,11 @@ pub fn xcorr_real<const N: usize, const M: usize>(x: &[i16; M], y: &[i16; M], ou
 pub fn calc_lag<const N: usize, const M: usize>(
     x: &[i16; M],
     y: &[i16; M],
-    buf: &mut [u32; N],
+    buf: &mut [i32; N],
 ) -> isize {
-    use core::cmp::Ordering;
-    xcorr_real(x, y, buf);
-    let lag_offset = buf.len() as isize / 2;
-    buf.iter()
-        .map(|v| *v as u32)
-        .enumerate()
-        .max_by(|(i, curr), (_, prev)| curr.cmp(prev))
-        .map(|(argmax, _)| argmax as isize - lag_offset)
-        .unwrap()
+    let argmax = xcorr_real(x, y, buf) as isize;
+    let lag_offset = N as isize / 2;
+    argmax - lag_offset
 }
 
 /// Calculate the angle of an audio source, using the cross correlation of two signals.
@@ -53,7 +59,7 @@ pub fn calc_angle<
 >(
     x: &[i16; M],
     y: &[i16; M],
-    buf: &mut [u32; N],
+    buf: &mut [i32; N],
     lag_table: &[u32; K],
 ) -> u32 {
     let lag = calc_lag(x, y, buf) as i32;
@@ -96,11 +102,11 @@ pub fn reduce_lag<const K: usize>(lag: i32) -> i32 {
     let MIN_LAG: i32 = -MAX_LAG;
 
     if lag > MAX_LAG {
-        MIN_LAG + (lag % MAX_LAG)
-        // MAX_LAG
+        // MIN_LAG + (lag % MAX_LAG)
+        MAX_LAG
     } else if lag < MIN_LAG {
-        MAX_LAG + (lag % MIN_LAG)
-        // MIN_LAG
+        // MAX_LAG + (lag % MIN_LAG)
+        MIN_LAG
     } else {
         lag
     }
@@ -121,13 +127,33 @@ impl<const N: usize> Channels<N> {
             ch3: [0i16; N],
             ch4: [0i16; N],
         };
+        let mut totals = [0i64; 4];
         samples.into_iter().enumerate().for_each(|(i, s)| {
             chans.ch1[i] = s[0];
+            totals[0] += s[0] as i64;
             chans.ch2[i] = s[1];
+            totals[1] += s[1] as i64;
             chans.ch3[i] = s[2];
+            totals[2] += s[2] as i64;
             chans.ch4[i] = s[3];
+            totals[3] += s[3] as i64;
         });
+
         chans
+            .channels_mut()
+            .iter_mut()
+            .enumerate()
+            .for_each(|(i, ch)| {
+                let mean = totals[i] / N as i64;
+                let mean = mean as i16;
+                ch.iter_mut().for_each(|s| *s = *s - mean);
+            });
+
+        chans
+    }
+
+    fn channels_mut(&mut self) -> [&mut [i16; N]; 4] {
+        [&mut self.ch1, &mut self.ch2, &mut self.ch3, &mut self.ch4]
     }
 }
 

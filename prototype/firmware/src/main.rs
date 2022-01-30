@@ -73,7 +73,7 @@ const APP: () = {
 
     // Initialize peripherals, before interrupts are unmasked
     // Returns all resources that need to be dynamically instantiated
-    #[init(spawn = [read_uarte0])]
+    #[init(spawn = [read_uarte0, send_message])]
     #[allow(unused_variables)]
     fn init(ctx: init::Context) -> init::LateResources {
         // Initialize UARTE0
@@ -118,7 +118,7 @@ const APP: () = {
                 timer0,
                 ppi.ppi0,
             );
-
+            ctx.spawn.send_message(DeviceToServer::Sync);
             let accumulator = CobsAccumulator::new();
             (uarte0, accumulator)
         };
@@ -253,36 +253,24 @@ const APP: () = {
         }
     }
 
-    #[task(capacity = 10, resources = [uarte0], priority  = 1)]
+    #[task(capacity = 10, resources = [uarte0], priority  = 99)]
     #[cfg_attr(not(feature = "uart"), allow(unused_variables, unused_mut))]
     fn send_message(mut ctx: send_message::Context, msg: DeviceToServer) {
         #[cfg(feature = "uart")]
         {
             use firmware::uarte::StartTxResult::Busy;
 
-            defmt::trace!("Sending message: {:?}", &msg);
-            let mut buf = [0; 8192 * 2];
-            match postcard::to_slice_cobs(&msg, &mut buf) {
-                Ok(bytes) => {
-                    while let Busy = ctx
-                        .resources
-                        .uarte0
-                        .lock(|uarte0| uarte0.try_start_tx(bytes))
-                    {
-                        defmt::debug!("Waiting for currently running tx task to finish");
-                        // Go to sleep to avoid busy waiting
-                        cortex_m::asm::wfi();
-                    }
-                }
-                Err(e) => {
-                    defmt::error!(
-                        "Could not serialize message {}. Error: {}",
-                        msg,
-                        defmt::Debug2Format(&e)
-                    )
-                }
+            while let Busy = ctx
+                .resources
+                .uarte0
+                .lock(|uarte0| uarte0.try_start_tx(&msg))
+            {
+                // while let Busy = ctx.resources.uarte0.try_start_tx(bytes){
+                defmt::trace!("Waiting for currently running tx task to finish");
+                // Go to sleep to avoid busy waiting
+                cortex_m::asm::wfi();
             }
-            defmt::trace!("Done sending message");
+            defmt::debug!("Sent!");
         }
     }
 
@@ -313,7 +301,7 @@ const APP: () = {
         spawn = [handle_message],
     )]
     #[cfg_attr(not(feature = "uart"), allow(unused_variables))]
-    fn read_uarte0(ctx: read_uarte0::Context) {
+    fn read_uarte0(mut ctx: read_uarte0::Context) {
         #[cfg(feature = "uart")]
         {
             use postcard::FeedResult::*;
@@ -332,7 +320,7 @@ const APP: () = {
         }
     }
 
-    #[task(binds = SAADC, priority = 255, resources = [mic_array], spawn = [on_samples])]
+    #[task(binds = SAADC, priority = 255, resources = [mic_array], spawn = [on_samples, send_message])]
     #[cfg_attr(not(feature = "mic_array"), allow(unused_variables))]
     fn on_saadc(ctx: on_saadc::Context) {
         #[cfg(feature = "mic_array")]
@@ -344,38 +332,48 @@ const APP: () = {
             let channels = {
                 let samples = mic_array.get_newest_samples();
 
-                // for c in samples.chunks(1024) {
-                //     let msg = DeviceToServer::Samples(c.try_into().unwrap());
-                //     if let Err(e) = ctx.spawn.send_message(msg) {
-                //         defmt::warn!("Error spawning send_message task");
-                //     }
-                // }
+                for c in samples.chunks(SAMPLE_BUF_SIZE) {
+                    let msg = DeviceToServer::Samples(c.try_into().unwrap());
+                    ctx.spawn.send_message(DeviceToServer::Sync).ok();
+                    if let Err(e) = ctx.spawn.send_message(msg) {
+                        defmt::warn!("Error spawning send_message task");
+                    }
+                    ctx.spawn.send_message(DeviceToServer::Sync).ok();
+                }
                 Channels::<SAMPLE_BUF_SIZE>::from_samples((*samples).try_into().unwrap())
             };
-            
+            defmt::debug!("{:?}", &channels.ch1);
+            defmt::debug!("{:?}", &channels.ch2);
+
+            // mic_array.start_sampling_task();
             if let Err(_) = ctx.spawn.on_samples(channels) {
-                defmt::warn!("Could not spawn on_saadc task");
+                defmt::warn!("Could not spawn on_samples task");
             };
-            
 
             // defmt::println!("angle: {}", angle);
             // defmt::trace!("Sample ready!");
         }
     }
 
-    #[task(priority = 254, resources = [mic_array, lag_table])]
+    #[task(priority = 10, resources = [mic_array, lag_table])]
     fn on_samples(mut ctx: on_samples::Context, channels: Channels<SAMPLE_BUF_SIZE>) {
-            let mut buf = [0u32; XCORR_SIZE];
-            let angle = calc_angle::<T_S_US, 125, XCORR_SIZE, SAMPLE_BUF_SIZE, LAG_TABLE_SIZE>(
-                &channels.ch3,
-                &channels.ch4,
-                &mut buf,
-                ctx.resources.lag_table,
-            );
-            ctx.resources.mic_array.lock(|mic_array| {
-                mic_array.start_sampling_task();
-            });
-            defmt::println!("angle: {}", angle);
+        let mut buf = [0i32; XCORR_SIZE];
+        let angle = folley_calc::calc_angle::<
+            T_S_US,
+            D_MICS_MM,
+            XCORR_SIZE,
+            SAMPLE_BUF_SIZE,
+            LAG_TABLE_SIZE,
+        >(
+            &channels.ch1,
+            &channels.ch2,
+            &mut buf,
+            ctx.resources.lag_table,
+        );
+        ctx.resources.mic_array.lock(|mic_array| {
+            mic_array.start_sampling_task();
+        });
+        defmt::println!("angle: {}", angle);
     }
 
     extern "C" {

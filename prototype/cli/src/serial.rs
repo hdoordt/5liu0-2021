@@ -16,29 +16,33 @@ impl RxPort {
 
     pub fn run_read_task<F: Fn(DeviceToServer) -> (), const N: usize>(&mut self, on_msg: F) {
         let mut accumulator = CobsAccumulator::<N>::new();
-        let mut serial_buf = [0u8; N];
+        let mut serial_buf = [0u8; 32];
         use postcard::FeedResult::*;
         loop {
             let chunk_len = self
                 .port
                 .read(&mut serial_buf)
+                .map(|l| l as isize)
                 .or_else(|e| {
                     if e.kind() == std::io::ErrorKind::TimedOut {
-                        Ok(0) // Just a time out,
+                        Ok(-1) // Just a time out,
                     } else {
                         Err(e)
                     }
                 })
                 .expect("Serial read error");
-            if chunk_len == 0 {
+            if chunk_len == -1 {
                 continue;
             }
 
-            let chunk = &serial_buf[0..chunk_len];
+            let chunk = &serial_buf[0..chunk_len as usize];
             match accumulator.feed(chunk) {
-                Consumed => {}, // Do nothing
+                Consumed => {} // Do nothing
                 OverFull(c) => eprintln!("Accumulator full, dropping contents: {:?}", c),
-                DeserError(c) => eprintln!("Deserialize error, throwing away message: {:?} ({:?})", c, chunk),
+                DeserError(c) => eprintln!(
+                    "Deserialize error, throwing away message: {:?} ({:?})",
+                    c, chunk
+                ),
                 Success { data, .. } => on_msg(data),
             }
         }

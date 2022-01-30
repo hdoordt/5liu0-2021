@@ -5,6 +5,7 @@ use clap::{App, Arg};
 use folley::serial::TxPort;
 use folley::store::SampleStore;
 
+use folley::consts::*;
 use folley_format::DeviceToServer;
 use serialport::{SerialPortType, UsbPortInfo};
 use std::io::{self, BufRead};
@@ -12,7 +13,28 @@ use std::sync::mpsc;
 use std::thread;
 
 fn handle_message(msg: DeviceToServer) {
-    println!("Got message: {:?}", msg);
+    use DeviceToServer::*;
+    match msg {
+        Samples(samples) => {
+            let lag_table = folley_calc::gen_lag_table::<T_S_US, D_MICS_MM, LAG_TABLE_SIZE>();
+            let mut buf = [0u32; XCORR_SIZE];
+            let channels = folley_calc::Channels::from_samples(samples);
+            let angle = folley_calc::calc_angle::<
+                T_S_US,
+                D_MICS_MM,
+                XCORR_SIZE,
+                SAMPLE_BUF_SIZE,
+                LAG_TABLE_SIZE,
+            >(&channels.ch1, &channels.ch2, &mut buf, &lag_table);
+
+            dbg!(angle);
+        }
+        m => {
+            println!("Unhandled message: {:?}", m);
+        }
+    }
+
+    // println!("Got message: {:?}", msg);
     // TODO, do cool stuff with the message that just came in.
 }
 

@@ -5,7 +5,9 @@ edition = "2021"
 
 [dependencies]
 folley-format = { path = "../format" }
+defmt =  { version = "0.3.0", optional = true }
 
 [features]
 default = ["std"]
 std = []
+defmt_print = ["defmt"]

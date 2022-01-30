@@ -1,7 +1,8 @@
 use core::{
     marker::PhantomData,
     mem,
-    sync::atomic::{compiler_fence, Ordering}, ops::Deref,
+    ops::Deref,
+    sync::atomic::{compiler_fence, Ordering},
 };
 
 use embedded_hal::adc::Channel;

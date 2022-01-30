@@ -12,7 +12,7 @@ pub mod consts {
     pub const T_S_US: u32 = 37;
     pub const D_MICS_MM: u32 = 125;
 
-    pub const SAMPLE_BUF_SIZE: usize = 1024 * 2;
+    pub const SAMPLE_BUF_SIZE: usize = 1024;
     pub const XCORR_SIZE: usize = 2 * SAMPLE_BUF_SIZE - 1;
     pub const LAG_TABLE_SIZE: usize = expected_lags_size(T_S_US, D_MICS_MM);
 }

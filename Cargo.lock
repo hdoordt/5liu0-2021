@@ -340,6 +340,7 @@ dependencies = [
 name = "folley-calc"
 version = "0.1.0"
 dependencies = [
+ "defmt",
  "folley-format",
 ]
 
@@ -348,6 +349,7 @@ name = "folley-cli"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "folley-calc",
  "folley-format",
  "once_cell",
  "postcard",

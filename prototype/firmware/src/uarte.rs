@@ -1,5 +1,6 @@
 use core::marker::PhantomData;
 
+use folley_format::DeviceToServer;
 use nrf52840_hal as hal;
 
 pub use hal::uarte::{Baudrate, Instance as UarteInstance, Parity, Pins, Uarte as HalUarte};
@@ -22,6 +23,8 @@ pub enum StartTxResult {
     Done,
     /// TX is busy. Try again later.
     Busy,
+    /// Something went wrong
+    Error,
 }
 
 pub struct Uarte<U, T, P> {
@@ -30,6 +33,7 @@ pub struct Uarte<U, T, P> {
     endtx_raised: bool,
     timer: PhantomData<T>,
     ppi_channel: PhantomData<P>,
+    tx_buf: [u8; 8195],
 }
 
 impl<U, T, P> Uarte<U, T, P>
@@ -87,10 +91,11 @@ where
             endtx_raised: false,
             timer: PhantomData,
             ppi_channel: PhantomData,
+            tx_buf: [0; 8195],
         }
     }
 
-    pub fn try_start_tx(&mut self, bytes: &[u8]) -> StartTxResult {
+    pub fn try_start_tx(&mut self, msg: &DeviceToServer) -> StartTxResult {
         if self
             .uarte
             .events_txstarted
@@ -107,23 +112,37 @@ where
             self.uarte.events_endtx.reset();
             self.uarte.events_txstarted.reset();
         }
+        core::sync::atomic::compiler_fence(core::sync::atomic::Ordering::AcqRel);
 
-        defmt::trace!("TX contents: {:?}. chunk_len: {}", bytes, bytes.len());
+        match postcard::to_slice_cobs(&msg, &mut self.tx_buf) {
+            Ok(bytes) => {
+                defmt::trace!("TX contents: {:?}. chunk_len: {}", bytes, bytes.len());
 
-        // Setup transaction parameters
-        self.uarte
-            .txd
-            .ptr // Where to find the data
-            .write(|w| unsafe { w.ptr().bits(bytes.as_ptr() as u32) });
-        self.uarte
-            .txd
-            .maxcnt // The length of the data
-            .write(|w| unsafe { w.maxcnt().bits(bytes.len() as u16) });
-        // Start write transaction
-        self.uarte
-            .tasks_starttx
-            .write(|w| w.tasks_starttx().set_bit());
-        StartTxResult::Done
+                // Setup transaction parameters
+                self.uarte
+                    .txd
+                    .ptr // Where to find the data
+                    .write(|w| unsafe { w.ptr().bits(bytes.as_ptr() as u32) });
+                self.uarte
+                    .txd
+                    .maxcnt // The length of the data
+                    .write(|w| unsafe { w.maxcnt().bits(bytes.len() as u16) });
+                // Start write transaction
+                self.uarte
+                    .tasks_starttx
+                    .write(|w| w.tasks_starttx().set_bit());
+
+                StartTxResult::Done
+            }
+            Err(e) => {
+                defmt::error!(
+                    "Could not serialize message {}. Error: {}",
+                    msg,
+                    defmt::Debug2Format(&e)
+                );
+                StartTxResult::Error
+            }
+        }
     }
 
     pub fn get_clear_event(&mut self) -> Option<UarteEvent> {
