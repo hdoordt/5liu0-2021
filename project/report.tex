@@ -1,0 +1,80 @@
+\documentclass[a4paper]{article}
+
+\usepackage[american]{babel}
+\usepackage{amssymb}
+
+\usepackage{amsmath}
+\usepackage{url}
+
+\begin{document}
+
+\title{{Folley: real-time fly noise origin locator} \\\large {Report of the 5LIU0 DBL project}}
+\author{{Henk Oordt} \hfill
+\\
+{1717510} \hfill}
+
+\maketitle
+\section{Introduction}
+% A general description of your project and its challenges.
+Project `Folley' is aimed at the design and construction of a real-time sound origin locator. Folley uses audio signal analysis to detect and locate in 3D space the origin of the buzzing sound of flies. It then aims a low-power laser pointer in the direction of the origin of the sound.
+
+In order to locate the sounds origin, Folley samples audio signal from an array of four analog microphones. The sampled signals are then analyzed in order to calculate a time-delay-angle-of-arrival (TDOA) \cite{6327613} which, along with the known microphone setup dimensions, can be used to calculate the azimuth and altitude angles of the origin with respect to the microphone array of the device.
+
+In order to develop the TDOA analysis software, a set of Matlab \cite{matlab} scripts were written, which given the raw audio signal measurements, can calculate the azimuth and altitude angles of the sounds origin with respect to the microphone array. Essentially, in these scripts all of the signal analysis calculations that are needed to reach the project goals are implemented. These Matlab scripts will serve as a basis and a means of verification for the Rust implementation of the algorithm in firmware. Upon completion of the Matlab scripts and tweaking of parameters, the calculations have been re-implemented in Rust \cite{rust}, in order for the analysis to be done by the microcontroller on the nRF52840dk \cite{nrf52840-dk} board in real time. A simple command line application written in Rust that can communicate with the device and that converts raw microphone measurements to Matlab input files was developed as well.
+
+This project focuses solely on the implementation of the TDOA analysis, as well as its evaluation. In this project, a testing environment was set up. This environment consists of a simple firmware application that is able to sample microphone data, and communicate these samples with the command line application that records them. The firmware is also able to control the pan-tilt bracket. The environment having been set up, a Matlab script has been implemented that is able to do the TDOA analysis based on four sine waves with separate phase differences, but with the same frequencies. Once this Matlab script had finished, the TDOA analysis was re-implemented in firmware, so that it can be done with microphone samples in real time. With the this project done, Folley should be able to locate origins of prefedined sine wave sounds, coming from a waveform generator.
+
+
+\section{Problem specification}
+% A detailed and technical description of the problem you’re addressing.
+
+\begin{enumerate}
+    \item Flies emit sound in which certain frequencies and harmonics are contained. Set up is built keeping the wavelengths corresponding to these frequencies in mind.
+    \item 2x2 microphones: 1 pair for the horizontal axis (azimuth), the other for vertical axis (altitude). For each pair, one microphone is selected as reference. Signal is sent, and is received by both microphones. Signal-to-noise ratio must be good enough in order for the device to pick up the signals. As angle at which sound comes in differentiates, delay between signal incoming in microphone differs. 
+    \item Delay is measured by cross correlating the signals. Extra difficulty caused by the signal being periodic. 
+\end{enumerate}
+
+\section{Evaluation criteria}
+% How will you be able to determine if your project is successful? Try to find objective and quantitative metrics.
+In order to indicate whether the project a success, the following goal is defined. The TDOA analysis is able to calculate the azimuth and altitude angles within a 10 degree error margin 80\% of the time, when presented with a predefined sine wave sound.
+
+As the accuracy of the pan-tilt servos is low, the accuracy of the actual laser pointer is not measured. Only the calculation outputs are benchmarked, both the Matlab script and the firmware implementation. Also, in this proejct noise on the microphne signals is not taken into consideration. Might noise cause issues in analysis, both the Matlab scripts and the firmware will be presented a precalculated set of samples, representing sine waves.
+
+
+\section{Setup}
+% What are the signals (real, simulated or physical) that you will use for your project? What is the hardware and/or software setup that you have used?
+\begin{enumerate}
+    \item Microphone array set up
+    \item Signals are analog microphone output voltages, amplified by on-board opamp
+    \item Sampled and quantized by nRF52840 on-chip ADC, into 12-bit 2's complement numbers
+\end{enumerate}
+
+
+The microphone array as well as the laser diode is mounted to a servo-powered pan-tilt bracket, which is being used to point the microphones and the laser diode in the direction of the origin of the sound given the TDOA analysis output. All of this is controlled by a Nordic Semiconductor nRF52840 microcontroller, mounted on a nRF52840DK board, for which firmware is to be customly written in Rust \cite{rust}. This microcontroller is able to sample up to 8 analog inputs, and can control the servo motors of the pan-tilt bracket using pulse-width modulation (PWM) \cite{GULYAEV20161529} with the help of a PCA9685 \cite{pca9685} PWM controller, significantly simplifying the control of the pan-tilt bracket positioning. The nRF52840dk board can also relatively easily be set up for serial communication over USB \cite{usb}, enabling running real-time analysis and graph plotting on a host computer for development ease.
+
+
+\section{Approach}
+% A detailed, technical description how you solved the problem.
+
+\begin{enumerate}
+    \item Signal is periodic, therefore take into account that the delay is always less than 1 period. Output of cross-correlation is the number of samples the reference leads or lags the other microphones signal.
+    \item Given sample rate, the distance between microphones and the speed of sound, the delay is used to calculate the angle from which the sound came. The distance between the device and the sound origin, is assumed to be infinitely large so the sound waves are assumed to be straight once hitting the microphones.
+    \item Output of calculation is used to point the laser into the direction of the sound.
+\end{enumerate}
+
+\section{Results and Analysis}
+% Evaluation of the results using the defined criteria and a reflection on the outcomes, explanations for shortcomings, ideas for improvements.
+\begin{enumerate}
+
+    \item Sound used in analysis played from smartphone at various angles multiple times. Measurements recorded, fed into matlab scripts and CLI. Output and error noted
+    \item Same sound played from smartphone, as real-time analysis by device outputs the angles.
+    \item graphs
+\end{enumerate}
+
+\section{Conclusions}
+% (Short) What did you learn from doing the project? What solutions did you provide?
+
+
+\bibliographystyle{plain}
+\bibliography{references}
+\end{document}
