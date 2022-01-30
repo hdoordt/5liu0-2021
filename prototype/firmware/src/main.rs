@@ -2,6 +2,7 @@
 #![no_main]
 
 use firmware::mic_array;
+use folley_calc::{calc_angle, expected_lags_size, Channels};
 use folley_firmware as firmware;
 use nrf52840_hal as hal;
 
@@ -17,7 +18,8 @@ use hal::{
     gpiote::Gpiote,
     pac::{TIMER0, TIMER1, TWIM0, UARTE0},
     ppi::{self, Ppi0, Ppi3},
-    Twim, saadc::{Time, Resolution}, Clocks,
+    saadc::{Resolution, Time},
+    Clocks, Twim,
 };
 
 #[cfg(feature = "pan_tilt")]
@@ -37,8 +39,7 @@ use firmware::mic_array::{MicArray, Pins as MicArrayPins};
 #[cfg(not(feature = "mic_array"))]
 use firmware::stubs::MicArray;
 
-// sample period in microseconds
-const T_S_US: u32 = 74;
+use firmware::consts::*;
 
 type MicArrayInstance = MicArray<
     P0_03<Disconnected>,
@@ -66,6 +67,8 @@ const APP: () = {
         pan_tilt: PanTilt<Twim<TWIM0>>,
         #[cfg(feature = "pan_tilt")]
         pan_tilt_status: PanTiltStatus,
+        #[cfg(feature = "analyze")]
+        lag_table: [u32; LAG_TABLE_SIZE],
     }
 
     // Initialize peripherals, before interrupts are unmasked
@@ -155,7 +158,7 @@ const APP: () = {
                 resolution: Resolution::_12BIT,
                 oversample: Oversample::BYPASS,
                 resistor: Resistor::PULLDOWN,
-                gain: Gain::GAIN1_5,
+                gain: Gain::GAIN1_6,
                 time: Time::_5US,
                 ..SaadcConfig::default()
             };
@@ -195,6 +198,8 @@ const APP: () = {
             pan_tilt,
             #[cfg(feature = "pan_tilt")]
             pan_tilt_status,
+            #[cfg(feature = "analyze")]
+            lag_table: folley_calc::gen_lag_table::<T_S_US, D_MICS_MM, LAG_TABLE_SIZE>(),
         }
     }
 
@@ -233,7 +238,9 @@ const APP: () = {
                 pan_tilt_status.tilt_deg = deg;
                 pan_tilt.tilt_deg(deg);
             }
-            ctx.spawn.send_message(DeviceToServer::PanTilt(pan_tilt_status)).ok();
+            ctx.spawn
+                .send_message(DeviceToServer::PanTilt(pan_tilt_status))
+                .ok();
         };
         #[cfg(feature = "mic_array")]
         {
@@ -325,35 +332,56 @@ const APP: () = {
         }
     }
 
-    #[task(binds = SAADC, priority = 255, resources = [mic_array], spawn = [send_message])]
+    #[task(binds = SAADC, priority = 255, resources = [mic_array], spawn = [on_samples])]
     #[cfg_attr(not(feature = "mic_array"), allow(unused_variables))]
     fn on_saadc(ctx: on_saadc::Context) {
         #[cfg(feature = "mic_array")]
         {
             let mic_array = ctx.resources.mic_array;
 
-            #[cfg(feature = "record")]
             mic_array.stop_sampling_task();
-            #[cfg(not(feature = "record"))]
-            mic_array.start_sampling_task();
 
-            let samples = mic_array.get_newest_samples();
-            
-            for c in samples.chunks(1024) {
-                let msg = DeviceToServer::Samples(c.try_into().unwrap());
-                if let Err(e) = ctx.spawn.send_message(msg) {
-                    defmt::warn!("Error spawning send_message task");
-                }
-            }
+            let channels = {
+                let samples = mic_array.get_newest_samples();
 
-            defmt::trace!("Sample ready!");
+                // for c in samples.chunks(1024) {
+                //     let msg = DeviceToServer::Samples(c.try_into().unwrap());
+                //     if let Err(e) = ctx.spawn.send_message(msg) {
+                //         defmt::warn!("Error spawning send_message task");
+                //     }
+                // }
+                Channels::<SAMPLE_BUF_SIZE>::from_samples((*samples).try_into().unwrap())
+            };
             
+            if let Err(_) = ctx.spawn.on_samples(channels) {
+                defmt::warn!("Could not spawn on_saadc task");
+            };
+            
+
+            // defmt::println!("angle: {}", angle);
+            // defmt::trace!("Sample ready!");
         }
+    }
+
+    #[task(priority = 254, resources = [mic_array, lag_table])]
+    fn on_samples(mut ctx: on_samples::Context, channels: Channels<SAMPLE_BUF_SIZE>) {
+            let mut buf = [0u32; XCORR_SIZE];
+            let angle = calc_angle::<T_S_US, 125, XCORR_SIZE, SAMPLE_BUF_SIZE, LAG_TABLE_SIZE>(
+                &channels.ch3,
+                &channels.ch4,
+                &mut buf,
+                ctx.resources.lag_table,
+            );
+            ctx.resources.mic_array.lock(|mic_array| {
+                mic_array.start_sampling_task();
+            });
+            defmt::println!("angle: {}", angle);
     }
 
     extern "C" {
         fn SWI0_EGU0();
         fn SWI1_EGU1();
         fn SWI2_EGU2();
+        fn SWI3_EGU3();
     }
 };

@@ -1,5 +1,6 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
+use folley_format::device_to_server::MicArraySample;
 const V_SOUND: i32 = 343;
 
 /// Calculate the cross-correlation of real-valued signals x and y. The result is put in the output buffer.
@@ -56,6 +57,7 @@ pub fn calc_angle<
     lag_table: &[u32; K],
 ) -> u32 {
     let lag = calc_lag(x, y, buf) as i32;
+    let lag = reduce_lag::<K>(lag);
     lag_to_angle::<T_S_US, D_MICS_MM, K>(lag, lag_table)
 }
 
@@ -89,26 +91,30 @@ pub const fn expected_lags_size(sample_period_us: u32, mic_distance_mm: u32) -> 
     (mic_distance_mm * 1000 / (sample_period_us * V_SOUND as u32)) as usize * 2 + 1
 }
 
-#[cfg(test)]
-#[cfg(feature = "std")]
-mod test {
-    use std::{
-        cmp::Ordering,
-        collections::{HashMap, HashSet},
-    };
+pub fn reduce_lag<const K: usize>(lag: i32) -> i32 {
+    let MAX_LAG = ((K - 1) / 2) as i32;
+    let MIN_LAG: i32 = -MAX_LAG;
 
-    use folley_format::device_to_server::MicArraySample;
-
-    use crate::*;
-
-    struct Channels<const N: usize> {
-        pub ch1: [i16; N],
-        pub ch2: [i16; N],
-        pub ch3: [i16; N],
-        pub ch4: [i16; N],
+    if lag > MAX_LAG {
+        MIN_LAG + (lag % MAX_LAG)
+        // MAX_LAG
+    } else if lag < MIN_LAG {
+        MAX_LAG + (lag % MIN_LAG)
+        // MIN_LAG
+    } else {
+        lag
     }
+}
 
-    fn to_channels<const N: usize>(samples: [MicArraySample; N]) -> Channels<N> {
+pub struct Channels<const N: usize> {
+    pub ch1: [i16; N],
+    pub ch2: [i16; N],
+    pub ch3: [i16; N],
+    pub ch4: [i16; N],
+}
+
+impl<const N: usize> Channels<N> {
+    pub fn from_samples(samples: [MicArraySample; N]) -> Self {
         let mut chans = Channels {
             ch1: [0i16; N],
             ch2: [0i16; N],
@@ -123,6 +129,19 @@ mod test {
         });
         chans
     }
+}
+
+#[cfg(test)]
+#[cfg(feature = "std")]
+mod test {
+    use std::{
+        cmp::Ordering,
+        collections::{HashMap, HashSet},
+    };
+
+    use folley_format::device_to_server::MicArraySample;
+
+    use crate::*;
 
     fn read_samples<const N: usize>() -> Vec<MicArraySample> {
         include_str!("../samples")
@@ -152,7 +171,7 @@ mod test {
         ];
 
         let samples: [_; M] = read_samples::<M>().try_into().unwrap();
-        let channels = to_channels(samples);
+        let channels = Channels::from_samples(samples);
 
         let mut out = [0u32; N];
         xcorr_real(&channels.ch1, &channels.ch2, &mut out);
@@ -165,7 +184,7 @@ mod test {
         const M: usize = 1024;
         const N: usize = 2 * M - 1;
         let samples: [_; M] = read_samples::<M>().try_into().unwrap();
-        let channels = to_channels(samples);
+        let channels = Channels::from_samples(samples);
         let mut buf = [0u32; N];
         let lag = calc_lag(&channels.ch1, &channels.ch2, &mut buf);
         assert_eq!(lag, 3);
@@ -176,7 +195,7 @@ mod test {
         const M: usize = 1024;
         const N: usize = 2 * M - 1;
         let samples: [_; M] = read_samples::<M>().try_into().unwrap();
-        let channels = to_channels(samples);
+        let channels = Channels::from_samples(samples);
         let mut buf = [0u32; N];
         let lag_table = gen_lag_table::<74, 125, 9>();
         let theta =
@@ -244,6 +263,15 @@ mod test {
         let lag_table = gen_lag_table::<14, 125, 53>();
         FLOORED_LAG_ANGLES.iter().for_each(|(lag, angle)| {
             assert_eq!(lag_to_angle::<14, 125, 53>(*lag, &lag_table), *angle)
+        });
+    }
+
+    #[test]
+    fn test_reduce_lag() {
+        const K: usize = expected_lags_size(14, 125);
+        const LAGS: [(i32, i32); 4] = [(-27, 25), (26, 26), (-26, -26), (27, -25)];
+        LAGS.iter().for_each(|(lag, ref expected)| {
+            assert_eq!(reduce_lag::<K>(*lag), *expected);
         });
     }
 }

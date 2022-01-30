@@ -1,7 +1,7 @@
 use core::{
     marker::PhantomData,
     mem,
-    sync::atomic::{compiler_fence, Ordering},
+    sync::atomic::{compiler_fence, Ordering}, ops::Deref,
 };
 
 use embedded_hal::adc::Channel;
@@ -97,7 +97,7 @@ where
         saadc.samplerate.write(|w| w.mode().task());
 
         for (chan, &ain_id) in pins.channels().iter().enumerate() {
-            defmt::debug!("Configuring channel {} for AIN{}", chan, ain_id);
+            defmt::trace!("Configuring channel {} for AIN{}", chan, ain_id);
 
             saadc.ch[chan].config.write(|w| {
                 w.refsel().variant(reference);
@@ -160,13 +160,13 @@ where
         }
     }
 
-    pub fn get_newest_samples(&mut self) -> &mut SampleBuffer {
+    pub fn get_newest_samples(&mut self) -> &mut <SampleBuffer as Deref>::Target {
         self.buffer.swap();
         self.saadc
             .result
             .ptr
             .write(|w| unsafe { w.bits(self.buffer.write_buf().as_ptr() as u32) });
-        self.buffer.read_buf()
+        &mut self.buffer.read_buf().0
     }
 
     pub fn start_sampling_task(&mut self) {
@@ -180,7 +180,7 @@ where
 
     pub fn stop_sampling_task(&mut self) {
         self.saadc.events_end.reset();
-        self.saadc.tasks_stop.write(|w| w.tasks_stop().set_bit());
+        // self.saadc.tasks_stop.write(|w| w.tasks_stop().set_bit());
         self.timer
             .as_timer0()
             .tasks_stop
@@ -241,7 +241,7 @@ mod saadc_buffer {
     pub struct SampleBuffer(pub [MicArraySample; Self::size()]);
 
     impl SampleBuffer {
-        const SIZE: usize = 1024*5;
+        const SIZE: usize = crate::consts::SAMPLE_BUF_SIZE;
 
         pub const fn size() -> usize {
             // assert_eq!(Self::SIZE % 4, 0, "SampleBuffer size must be a multiple of 4");
