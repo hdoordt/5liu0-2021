@@ -17,8 +17,8 @@ pub enum DeviceToServer {
 #[derive(Serialize, Deserialize, Debug, Clone, Copy)]
 #[cfg_attr(feature = "defmt", derive(Format))]
 pub struct PanTiltStatus {
-    pub pan_deg: f32,
-    pub tilt_deg: f32,
+    pub pan_deg: i32,
+    pub tilt_deg: i32,
 }
 
 pub type MicArraySample = [i16; 4];

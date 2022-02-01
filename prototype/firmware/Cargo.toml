@@ -40,8 +40,9 @@ features = ["rt"]
 full = ["pan_tilt", "mic_array", "uart"]
 measure = ["mic_array", "uart"]
 control = ["pan_tilt", "uart"]
-record = ["measure"]
-analyze = ["mic_array"]
+standalone = ["pan_tilt", "mic_array"]
+
+default = ["standalone"]
 
 pan_tilt = ["pwm-pca9685"]
 mic_array = []
