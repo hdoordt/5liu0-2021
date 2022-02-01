@@ -1,6 +1,7 @@
 #![no_std]
 #![no_main]
 
+use folley_calc::Channels;
 use folley_firmware as firmware;
 use nrf52840_hal as hal;
 
@@ -16,7 +17,8 @@ use hal::{
     gpiote::Gpiote,
     pac::{TIMER0, TIMER1, TWIM0, UARTE0},
     ppi::{self, Ppi0, Ppi3},
-    Twim, saadc::{Time, Resolution},
+    saadc::{Resolution, Time},
+    Clocks, Twim,
 };
 
 #[cfg(feature = "pan_tilt")]
@@ -35,6 +37,8 @@ use postcard::CobsAccumulator;
 use firmware::mic_array::{MicArray, Pins as MicArrayPins};
 #[cfg(not(feature = "mic_array"))]
 use firmware::stubs::MicArray;
+
+use firmware::consts::*;
 
 type MicArrayInstance = MicArray<
     P0_03<Disconnected>,
@@ -62,11 +66,13 @@ const APP: () = {
         pan_tilt: PanTilt<Twim<TWIM0>>,
         #[cfg(feature = "pan_tilt")]
         pan_tilt_status: PanTiltStatus,
+        #[cfg(feature = "mic_array")]
+        lag_table: [u32; MAX_LAG],
     }
 
     // Initialize peripherals, before interrupts are unmasked
     // Returns all resources that need to be dynamically instantiated
-    #[init(spawn = [read_uarte0])]
+    #[init(spawn = [read_uarte0, send_message])]
     #[allow(unused_variables)]
     fn init(ctx: init::Context) -> init::LateResources {
         // Initialize UARTE0
@@ -81,7 +87,6 @@ const APP: () = {
         let (uarte0, accumulator) = {
             use hal::gpio::Level;
             use hal::timer::Timer;
-            use hal::Clocks;
 
             // Receiving pin, initialize as input
             let rxd = port0.p0_08.into_floating_input().degrade();
@@ -108,11 +113,11 @@ const APP: () = {
                 ctx.device.UARTE0, // Take peripheral handle by value
                 uart_pins,         // Take pins by value
                 Parity::EXCLUDED,
-                Baudrate::BAUD1M,
+                Baudrate::BAUD460800,
                 timer0,
                 ppi.ppi0,
             );
-
+            ctx.spawn.send_message(DeviceToServer::Sync);
             let accumulator = CobsAccumulator::new();
             (uarte0, accumulator)
         };
@@ -149,11 +154,11 @@ const APP: () = {
                 mic4: port0.p0_29,
             };
             let saadc_config = SaadcConfig {
-                resolution: Resolution::_14BIT,
+                resolution: Resolution::_12BIT,
                 oversample: Oversample::BYPASS,
                 resistor: Resistor::PULLDOWN,
-                gain: Gain::GAIN1_5,
-                time: Time::_3US,
+                gain: Gain::GAIN1_4,
+                time: Time::_5US,
                 ..SaadcConfig::default()
             };
 
@@ -172,7 +177,7 @@ const APP: () = {
             ppi.ppi2.set_event_endpoint(gpiote.channel2().event());
             ppi.ppi2.enable();
 
-            timer1.start(120u32);
+            timer1.start(T_S_US);
 
             let mut mic_array =
                 MicArray::new(ctx.device.SAADC, mic_pins, saadc_config, timer1, ppi.ppi3);
@@ -192,6 +197,8 @@ const APP: () = {
             pan_tilt,
             #[cfg(feature = "pan_tilt")]
             pan_tilt_status,
+            #[cfg(feature = "mic_array")]
+            lag_table: folley_calc::gen_lag_table::<T_S_US, D_MICS_MM, MAX_LAG>(),
         }
     }
 
@@ -230,7 +237,9 @@ const APP: () = {
                 pan_tilt_status.tilt_deg = deg;
                 pan_tilt.tilt_deg(deg);
             }
-            pan_tilt_status
+            ctx.spawn
+                .send_message(DeviceToServer::PanTilt(pan_tilt_status))
+                .ok();
         };
         #[cfg(feature = "mic_array")]
         {
@@ -241,46 +250,26 @@ const APP: () = {
                 None => {}
             }
         }
-
-        ctx.spawn
-            .send_message(DeviceToServer {
-                #[cfg(feature = "pan_tilt")]
-                pan_tilt: Some(*pan_tilt_status),
-                ..DeviceToServer::default()
-            })
-            .ok();
     }
 
-    #[task(capacity = 10, resources = [uarte0], priority  = 1)]
+    #[task(capacity = 10, resources = [uarte0], priority  = 99)]
     #[cfg_attr(not(feature = "uart"), allow(unused_variables, unused_mut))]
     fn send_message(mut ctx: send_message::Context, msg: DeviceToServer) {
         #[cfg(feature = "uart")]
         {
             use firmware::uarte::StartTxResult::Busy;
 
-            defmt::trace!("Sending message: {:?}", &msg);
-            let mut buf = [0; 8192];
-            match postcard::to_slice_cobs(&msg, &mut buf) {
-                Ok(bytes) => {
-                    while let Busy = ctx
-                        .resources
-                        .uarte0
-                        .lock(|uarte0| uarte0.try_start_tx(bytes))
-                    {
-                        defmt::debug!("Waiting for currently running tx task to finish");
-                        // Go to sleep to avoid busy waiting
-                        cortex_m::asm::wfi();
-                    }
-                }
-                Err(e) => {
-                    defmt::error!(
-                        "Could not serialize message {}. Error: {}",
-                        msg,
-                        defmt::Debug2Format(&e)
-                    )
-                }
+            while let Busy = ctx
+                .resources
+                .uarte0
+                .lock(|uarte0| uarte0.try_start_tx(&msg))
+            {
+                // while let Busy = ctx.resources.uarte0.try_start_tx(bytes){
+                defmt::trace!("Waiting for currently running tx task to finish");
+                // Go to sleep to avoid busy waiting
+                cortex_m::asm::wfi();
             }
-            defmt::trace!("Done sending message");
+            defmt::debug!("Sent!");
         }
     }
 
@@ -330,29 +319,84 @@ const APP: () = {
         }
     }
 
-    #[task(binds = SAADC, priority = 255, resources = [mic_array], spawn = [send_message])]
+    #[task(binds = SAADC, priority = 255, resources = [mic_array], spawn = [on_samples, send_message])]
     #[cfg_attr(not(feature = "mic_array"), allow(unused_variables))]
     fn on_saadc(ctx: on_saadc::Context) {
         #[cfg(feature = "mic_array")]
         {
             let mic_array = ctx.resources.mic_array;
 
-            let samples = mic_array.get_samples_and_start();
+            mic_array.stop_sampling_task();
 
-            defmt::trace!("Sample ready!, {:?}", &samples);
-            let msg = DeviceToServer {
-                samples: Some(samples.clone()),
-                ..DeviceToServer::default()
+            let channels = {
+                let samples = mic_array.get_newest_samples();
+
+                for c in samples.chunks(SAMPLE_BUF_SIZE) {
+                    let msg = DeviceToServer::Samples(c.try_into().unwrap());
+                    ctx.spawn.send_message(DeviceToServer::Sync).ok();
+                    if let Err(_) = ctx.spawn.send_message(msg) {
+                        defmt::warn!("Error spawning send_message task");
+                    }
+                    ctx.spawn.send_message(DeviceToServer::Sync).ok();
+                }
+                Channels::<SAMPLE_BUF_SIZE>::from_samples((*samples).try_into().unwrap())
             };
-            if let Err(e) = ctx.spawn.send_message(msg) {
-                defmt::warn!("Error spawning send_message task: {:?}", e);
-            }
+            defmt::debug!("{:?}", &channels.ch1);
+            defmt::debug!("{:?}", &channels.ch2);
+
+            
+            if let Err(_) = ctx.spawn.on_samples(channels) {
+                defmt::warn!("Could not spawn on_samples task");
+            };
+
+            // defmt::println!("angle: {}", angle);
+            // defmt::trace!("Sample ready!");
         }
+    }
+
+    #[task(priority = 10, resources = [lag_table], spawn = [start_sampling])]
+    fn on_samples(ctx: on_samples::Context, channels: Channels<SAMPLE_BUF_SIZE>) {
+        let mut buf = [0i64; MAX_LAG];
+        let x_angle = folley_calc::calc_angle::<
+            T_S_US,
+            D_MICS_MM,
+            MAX_LAG,
+            SAMPLE_BUF_SIZE,
+        >(
+            &channels.ch1,
+            &channels.ch2,
+            &mut buf,
+            ctx.resources.lag_table,
+        );
+        let y_angle = folley_calc::calc_angle::<
+            T_S_US,
+            D_MICS_MM,
+            MAX_LAG,
+            SAMPLE_BUF_SIZE,
+        >(
+            &channels.ch3,
+            &channels.ch4,
+            &mut buf,
+            ctx.resources.lag_table,
+        );
+        defmt::info!("x: {}\t\ty: {}", x_angle, y_angle);
+        if let Err(_) = ctx.spawn.start_sampling() {
+            defmt::error!("Could not spawn start_sampling task");
+        }
+        
+    }
+
+    #[task(priority = 255, resources = [mic_array])]
+    fn start_sampling(ctx: start_sampling::Context) {
+        ctx.resources.mic_array.start_sampling_task();
     }
 
     extern "C" {
         fn SWI0_EGU0();
         fn SWI1_EGU1();
         fn SWI2_EGU2();
+        fn SWI3_EGU3();
+        fn SWI4_EGU4();
+        fn SWI5_EGU5();
     }
 };

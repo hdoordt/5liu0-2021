@@ -1,2 +1,6 @@
 [build]
 target = "x86_64-unknown-linux-gnu"
+
+[alias]
+run-linux = "run --target x86_64-unknown-linux-gnu"
+run-cli = "run-linux -p folley-cli --no-default-features --features=cli"
