@@ -33,7 +33,7 @@ pub struct Uarte<U, T, P> {
     endtx_raised: bool,
     timer: PhantomData<T>,
     ppi_channel: PhantomData<P>,
-    tx_buf: [u8; 8195],
+    tx_buf: [u8; 10000],
 }
 
 impl<U, T, P> Uarte<U, T, P>
@@ -91,7 +91,7 @@ where
             endtx_raised: false,
             timer: PhantomData,
             ppi_channel: PhantomData,
-            tx_buf: [0; 8195],
+            tx_buf: [0; 10000],
         }
     }
 

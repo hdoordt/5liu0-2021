@@ -4,28 +4,27 @@ use folley_format::device_to_server::MicArraySample;
 const V_SOUND: i32 = 343;
 
 /// Calculate the cross-correlation of real-valued signals x and y. The result is put in the output buffer.
-/// Make sure x and y are of the same length M, and the output buffer is of length N = 2* M -1.M
+/// Make sure x and y are of the same length M, and the output buffer is of length N <= 2* M -1.M
 #[allow(non_snake_case)]
-pub fn xcorr_real<const N: usize, const M: usize>(
-    x: &[i16; M],
-    y: &[i16; M],
-    out: &mut [i32; N],
+pub fn xcorr_real<const XCORR_LEN: usize, const SIGNAL_LEN: usize>(
+    x: &[i16; SIGNAL_LEN],
+    y: &[i16; SIGNAL_LEN],
+    out: &mut [i64; XCORR_LEN],
 ) -> usize {
-    debug_assert_eq!(N, 2 * M - 1);
+    debug_assert!(XCORR_LEN <= 2 * SIGNAL_LEN - 1);
     // This method may be improved by taking the Fourier transform X and Y of each of the signals x and Y,
     // multiplying the output of X with the complex conjugate of Y, and reverse-transform the product.
     let mut argmax = 0;
     let mut max = 0;
-    for n in 0..N {
-        for m in 0..M {
-            let x_val = x[m] as i32;
-            let y_index = (n + m) as isize - (N as isize) / 2;
+    for n in 0..XCORR_LEN {
+        for m in 0..SIGNAL_LEN {
+            let x_val = x[m] as i64;
+            let y_index = (n + m) as isize - (XCORR_LEN as isize) / 2;
             let y_val = if y_index >= 0 {
                 *y.get(y_index as usize).unwrap_or(&0)
             } else {
                 0
-            } as i32;
-            // defmt::println!("X index: {}, val: {}, y index: {}, val: {}", x_index, x_val, m, y_val);
+            } as i64;
             out[n] += x_val * y_val;
         }
         if out[n] > max {
@@ -39,13 +38,13 @@ pub fn xcorr_real<const N: usize, const M: usize>(
 /// Calculate the lag in sample numbers of signals x and y using cross-correlation. The buffer is used
 /// to store the cross-correlation output.
 #[allow(non_snake_case)]
-pub fn calc_lag<const N: usize, const M: usize>(
-    x: &[i16; M],
-    y: &[i16; M],
-    buf: &mut [i32; N],
+pub fn calc_lag<const XCORR_LEN: usize, const SIGNAL_LEN: usize>(
+    x: &[i16; SIGNAL_LEN],
+    y: &[i16; SIGNAL_LEN],
+    buf: &mut [i64; XCORR_LEN],
 ) -> isize {
     let argmax = xcorr_real(x, y, buf) as isize;
-    let lag_offset = N as isize / 2;
+    let lag_offset = XCORR_LEN as isize / 2;
     argmax - lag_offset
 }
 
@@ -53,38 +52,36 @@ pub fn calc_lag<const N: usize, const M: usize>(
 pub fn calc_angle<
     const T_S_US: u32,
     const D_MICS_MM: u32,
-    const N: usize,
-    const M: usize,
-    const K: usize,
+    const XCORR_LEN: usize,
+    const SIGNAL_LEN: usize,
 >(
-    x: &[i16; M],
-    y: &[i16; M],
-    buf: &mut [i32; N],
-    lag_table: &[u32; K],
+    x: &[i16; SIGNAL_LEN],
+    y: &[i16; SIGNAL_LEN],
+    buf: &mut [i64; XCORR_LEN],
+    lag_table: &[u32; XCORR_LEN],
 ) -> u32 {
     let lag = calc_lag(x, y, buf) as i32;
-    let lag = reduce_lag::<K>(lag);
-    lag_to_angle::<T_S_US, D_MICS_MM, K>(lag, lag_table)
+    lag_to_angle::<T_S_US, D_MICS_MM, XCORR_LEN>(lag, lag_table)
 }
 
-pub fn lag_to_angle<const T_S_US: u32, const D_MICS_MM: u32, const K: usize>(
+pub fn lag_to_angle<const T_S_US: u32, const D_MICS_MM: u32, const LAGS_SIZE: usize>(
     lag: i32,
-    table: &[u32; K],
+    table: &[u32; LAGS_SIZE],
 ) -> u32 {
-    let i = lag + K as i32 / 2;
+    let i = lag + LAGS_SIZE as i32 / 2;
     table[i as usize]
 }
 
-pub fn gen_lag_table<const T_S_US: u32, const D_MICS_MM: u32, const K: usize>() -> [u32; K] {
-    debug_assert_eq!(K, expected_lags_size(T_S_US, D_MICS_MM));
-    let mut table = [0u32; K];
+pub fn gen_lag_table<const T_S_US: u32, const D_MICS_MM: u32, const SIZE: usize>() -> [u32; SIZE] {
+    debug_assert_eq!(SIZE, max_lags_size(T_S_US, D_MICS_MM));
+    let mut table = [0u32; SIZE];
 
     table.iter_mut().enumerate().for_each(|(lag, angle)| {
-        let lag = lag as i32 - K as i32 / 2;
+        let lag = lag as i32 - SIZE as i32 / 2;
         let cos_theta = (lag * T_S_US as i32 * V_SOUND) / D_MICS_MM as i32;
         let theta = ACOS_TABLE
             .iter()
-            .find(|(cos, deg)| *cos <= cos_theta)
+            .find(|(cos, _)| *cos <= cos_theta)
             .map(|(_, deg)| *deg)
             .unwrap_or(0);
 
@@ -93,39 +90,31 @@ pub fn gen_lag_table<const T_S_US: u32, const D_MICS_MM: u32, const K: usize>() 
     table
 }
 
-pub const fn expected_lags_size(sample_period_us: u32, mic_distance_mm: u32) -> usize {
+/// Given the distance between two microphones in millimeters, the sample period in microseconds,
+/// and the speed of sound in m/s, calculates the maximum number of samples possible between 
+/// the moment the signal hits the first microphone and the moment it reaches the second.
+pub const fn max_lags_size(sample_period_us: u32, mic_distance_mm: u32) -> usize {
     (mic_distance_mm * 1000 / (sample_period_us * V_SOUND as u32)) as usize * 2 + 1
 }
 
-pub fn reduce_lag<const K: usize>(lag: i32) -> i32 {
-    let MAX_LAG = ((K - 1) / 2) as i32;
-    let MIN_LAG: i32 = -MAX_LAG;
-
-    if lag > MAX_LAG {
-        // MIN_LAG + (lag % MAX_LAG)
-        MAX_LAG
-    } else if lag < MIN_LAG {
-        // MAX_LAG + (lag % MIN_LAG)
-        MIN_LAG
-    } else {
-        lag
-    }
+/// Representation of samples of 4 separate channels
+pub struct Channels<const SIGNAL_LEN: usize> {
+    pub ch1: [i16; SIGNAL_LEN],
+    pub ch2: [i16; SIGNAL_LEN],
+    pub ch3: [i16; SIGNAL_LEN],
+    pub ch4: [i16; SIGNAL_LEN],
 }
 
-pub struct Channels<const N: usize> {
-    pub ch1: [i16; N],
-    pub ch2: [i16; N],
-    pub ch3: [i16; N],
-    pub ch4: [i16; N],
-}
-
-impl<const N: usize> Channels<N> {
-    pub fn from_samples(samples: [MicArraySample; N]) -> Self {
+impl<const SIGNAL_LEN: usize> Channels<SIGNAL_LEN> {
+    /// Put samples into four separate arrays and bundle them in a Channels object.
+    /// In this method, the channel mean is subtracted from each sample,
+    /// in order to make the DC value ~ zero. This improves cross correlation.
+    pub fn from_samples(samples: [MicArraySample; SIGNAL_LEN]) -> Self {
         let mut chans = Channels {
-            ch1: [0i16; N],
-            ch2: [0i16; N],
-            ch3: [0i16; N],
-            ch4: [0i16; N],
+            ch1: [0i16; SIGNAL_LEN],
+            ch2: [0i16; SIGNAL_LEN],
+            ch3: [0i16; SIGNAL_LEN],
+            ch4: [0i16; SIGNAL_LEN],
         };
         let mut totals = [0i64; 4];
         samples.into_iter().enumerate().for_each(|(i, s)| {
@@ -144,15 +133,15 @@ impl<const N: usize> Channels<N> {
             .iter_mut()
             .enumerate()
             .for_each(|(i, ch)| {
-                let mean = totals[i] / N as i64;
+                let mean = totals[i] / SIGNAL_LEN as i64;
                 let mean = mean as i16;
-                ch.iter_mut().for_each(|s| *s = *s - mean);
+                ch.iter_mut().for_each(|s| *s = s.saturating_sub(mean));
             });
 
         chans
     }
 
-    fn channels_mut(&mut self) -> [&mut [i16; N]; 4] {
+    fn channels_mut(&mut self) -> [&mut [i16; SIGNAL_LEN]; 4] {
         [&mut self.ch1, &mut self.ch2, &mut self.ch3, &mut self.ch4]
     }
 }
@@ -294,7 +283,7 @@ mod test {
 
     #[test]
     fn test_reduce_lag() {
-        const K: usize = expected_lags_size(14, 125);
+        const K: usize = max_lags_size(14, 125);
         const LAGS: [(i32, i32); 4] = [(-27, 25), (26, 26), (-26, -26), (27, -25)];
         LAGS.iter().for_each(|(lag, ref expected)| {
             assert_eq!(reduce_lag::<K>(*lag), *expected);

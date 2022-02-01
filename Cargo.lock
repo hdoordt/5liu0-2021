@@ -351,6 +351,7 @@ dependencies = [
  "clap",
  "folley-calc",
  "folley-format",
+ "lazy_static",
  "once_cell",
  "postcard",
  "pyo3",
