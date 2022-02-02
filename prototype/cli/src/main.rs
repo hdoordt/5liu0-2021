@@ -5,16 +5,44 @@ use clap::{App, Arg};
 use folley::serial::TxPort;
 use folley::store::SampleStore;
 
+use folley::consts::*;
 use folley_format::DeviceToServer;
 use serialport::{SerialPortType, UsbPortInfo};
 use std::io::{self, BufRead};
 use std::sync::mpsc;
 use std::thread;
 
+use lazy_static::lazy_static;
+
+lazy_static! {
+    static ref LAG_TABLE: [u32; LAG_TABLE_SIZE] =
+        folley_calc::gen_lag_table::<T_S_US, D_MICS_MM, LAG_TABLE_SIZE>();
+}
 
 fn handle_message(msg: DeviceToServer) {
-    println!("Got message: {:?}", msg);
-    // TODO, do cool stuff with the message that just came in.
+    use DeviceToServer::*;
+    match msg {
+        Samples(samples) => { 
+            let mut buf = [0i64; XCORR_SIZE];
+            let channels = folley_calc::Channels::from_samples(samples);
+            let x_angle = folley_calc::calc_angle::<
+                T_S_US,
+                D_MICS_MM,
+                XCORR_SIZE,
+                SAMPLE_BUF_SIZE,
+            >(&channels.ch1, &channels.ch2, &mut buf, &LAG_TABLE);
+            let y_angle = folley_calc::calc_angle::<
+                T_S_US,
+                D_MICS_MM,
+                XCORR_SIZE,
+                SAMPLE_BUF_SIZE,
+            >(&channels.ch1, &channels.ch2, &mut buf, &LAG_TABLE);
+            println!("X {}, Y: {}", x_angle, y_angle);            
+        }
+        m => {
+            println!("Unhandled message: {:?}", m);
+        }
+    }
 }
 
 fn run<const N: usize>(mut tx_port: TxPort<N>) {
@@ -59,13 +87,15 @@ fn main() {
 
     let rx_thread = thread::spawn(move || {
         for msg in rx.into_iter() {
-            if let Some(samples) = &msg.samples {
-                store
-                .as_mut()
-                .map(|s: &mut SampleStore<64>| s.store(samples).unwrap());    
-                
-            }
-            handle_message(msg);
+            match msg {
+                DeviceToServer::Samples(samples) => {
+                    store
+                        .as_mut()
+                        .map(|s: &mut SampleStore<64>| s.store(&samples).unwrap());
+                }
+                _ => {}
+            };
+            thread::spawn(|| handle_message(msg));
         }
     });
 

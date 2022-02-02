@@ -20,7 +20,7 @@ fn init(port_name: String, compress_factor: usize) -> PyResult<()> {
 
     thread::spawn(move || {
         for msg in rx.into_iter() {
-            if let Some(samples) = msg.samples {
+            if let DeviceToServer::Samples(samples) = msg {
                 let mut compressed =
                     Vec::with_capacity((samples.len() + compress_factor) / compress_factor);
                 for i in 0..samples.len() / compress_factor {

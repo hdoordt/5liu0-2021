@@ -20,6 +20,7 @@ nb = "1.0.0"
 pwm-pca9685 = {version = "0.3.1", optional = true }
 
 folley-format = { path = "../format",  features = ["defmt"] }
+folley-calc = { path = "../calc",  default-features = false, features = ["defmt_print"] }
 
 [dependencies.cortex-m-rtic]
 version = "0.5.9"
@@ -39,6 +40,9 @@ features = ["rt"]
 full = ["pan_tilt", "mic_array", "uart"]
 measure = ["mic_array", "uart"]
 control = ["pan_tilt", "uart"]
+standalone = ["pan_tilt", "mic_array"]
+
+default = ["standalone"]
 
 pan_tilt = ["pwm-pca9685"]
 mic_array = []

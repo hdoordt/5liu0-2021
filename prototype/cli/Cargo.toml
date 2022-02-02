@@ -17,6 +17,8 @@ folley-format = { path = "../format" }
 
 clap = {version = "2.33.3", optional = true }
 once_cell = { version = "1.8.0", optional = true }
+folley-calc = { path = "../calc",  default-features = false }
+lazy_static = "1.4.0"
 
 [dependencies.pyo3]
 version = "0.15.1"

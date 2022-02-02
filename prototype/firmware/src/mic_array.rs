@@ -1,12 +1,13 @@
 use core::{
     marker::PhantomData,
     mem,
+    ops::Deref,
     sync::atomic::{compiler_fence, Ordering},
 };
 
 use embedded_hal::adc::Channel;
 use embedded_hal::timer::Cancel;
-use folley_format::device_to_server::{MicArraySample, SampleBuffer};
+use folley_format::device_to_server::MicArraySample;
 use nrf52840_hal::{
     pac::SAADC,
     ppi::ConfigurablePpi,
@@ -15,7 +16,7 @@ use nrf52840_hal::{
     Saadc, Timer,
 };
 
-use self::saadc_buffer::SaadcBuffer;
+use self::saadc_buffer::{SaadcBuffer, SampleBuffer};
 
 pub struct Pins<M1, M2, M3, M4>
 where
@@ -97,7 +98,7 @@ where
         saadc.samplerate.write(|w| w.mode().task());
 
         for (chan, &ain_id) in pins.channels().iter().enumerate() {
-            defmt::debug!("Configuring channel {} for AIN{}", chan, ain_id);
+            defmt::trace!("Configuring channel {} for AIN{}", chan, ain_id);
 
             saadc.ch[chan].config.write(|w| {
                 w.refsel().variant(reference);
@@ -150,7 +151,6 @@ where
 
         // Only start after all initalization is done.
         compiler_fence(Ordering::SeqCst);
-        saadc.tasks_start.write(|w| w.tasks_start().set_bit());
 
         Self {
             saadc,
@@ -161,22 +161,18 @@ where
         }
     }
 
-    pub fn get_samples_and_start(&mut self) -> &mut SampleBuffer {
+    pub fn get_newest_samples(&mut self) -> &mut <SampleBuffer as Deref>::Target {
         self.buffer.swap();
         self.saadc
             .result
             .ptr
             .write(|w| unsafe { w.bits(self.buffer.write_buf().as_ptr() as u32) });
-        let slice = self.buffer.read_buf();
-
-        // Only start conversion after we get the read slice reference.
-        compiler_fence(Ordering::SeqCst);
-        self.saadc.events_end.reset();
-        self.saadc.tasks_start.write(|w| w.tasks_start().set_bit());
-        slice
+        &mut self.buffer.read_buf().0
     }
 
     pub fn start_sampling_task(&mut self) {
+        self.saadc.events_end.reset();
+        self.saadc.tasks_start.write(|w| w.tasks_start().set_bit());
         self.timer
             .as_timer0()
             .tasks_start
@@ -184,6 +180,8 @@ where
     }
 
     pub fn stop_sampling_task(&mut self) {
+        self.saadc.events_end.reset();
+        // self.saadc.tasks_stop.write(|w| w.tasks_stop().set_bit());
         self.timer
             .as_timer0()
             .tasks_stop
@@ -192,9 +190,13 @@ where
 }
 
 mod saadc_buffer {
-    use core::sync::atomic::{AtomicBool, Ordering};
 
-    use folley_format::device_to_server::SampleBuffer;
+    use core::{
+        ops::{Deref, DerefMut},
+        sync::atomic::{AtomicBool, Ordering},
+    };
+
+    use folley_format::device_to_server::MicArraySample;
 
     static mut SAADC_BUFFER_A: SampleBuffer = SampleBuffer::new_empty();
     static mut SAADC_BUFFER_B: SampleBuffer = SampleBuffer::new_empty();
@@ -231,6 +233,37 @@ mod saadc_buffer {
 
             self.write = unsafe { &mut *write };
             self.read = unsafe { &mut *read };
+        }
+    }
+
+    #[derive(Debug, Clone)]
+    #[cfg_attr(feature = "defmt", derive(Format))]
+    #[repr(transparent)]
+    pub struct SampleBuffer(pub [MicArraySample; Self::size()]);
+
+    impl SampleBuffer {
+        const SIZE: usize = crate::consts::SAMPLE_BUF_SIZE;
+
+        pub const fn size() -> usize {
+            // assert_eq!(Self::SIZE % 4, 0, "SampleBuffer size must be a multiple of 4");
+            Self::SIZE
+        }
+
+        pub const fn new_empty() -> Self {
+            Self([[0; 4]; Self::size()])
+        }
+    }
+    impl Deref for SampleBuffer {
+        type Target = [MicArraySample; Self::size()];
+
+        fn deref(&self) -> &Self::Target {
+            &self.0
+        }
+    }
+
+    impl DerefMut for SampleBuffer {
+        fn deref_mut(&mut self) -> &mut Self::Target {
+            &mut self.0
         }
     }
 }
