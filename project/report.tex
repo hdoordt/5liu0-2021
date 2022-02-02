@@ -11,7 +11,7 @@
 
 \begin{document}
 
-\title{{Folley: real-time fly noise origin locator} \\\large {Report of the 5LIU0 DBL project}}
+\title{{Folley: real-time mosquito noise origin locator} \\\large {Report of the 5LIU0 DBL project}}
 \author{{Henk Oordt} \hfill
 \\
 {1717510} \hfill}
@@ -27,24 +27,24 @@
 
 \section{Introduction}
 % A general description of your project and its challenges.
-Project `Folley' is aimed at the design and construction of a real-time sound origin locator. Folley uses audio signal analysis to detect and locate in 3D space the origin of the buzzing sound of flies. It then aims a low-power laser pointer in the direction of the origin of the sound.
+Project `Folley' is aimed at the design and construction of a real-time sound origin locator. Folley uses audio signal analysis to detect and locate in 3D space the origin of the buzzing sound of mosquitoes. 
 
 In order to locate the sounds origin, Folley samples audio signal from an array of four analog microphones. The sampled signals are then analyzed in order to calculate a time-delay-angle-of-arrival (TDOA) \cite{6327613} which, along with the known microphone setup dimensions, can be used to calculate the azimuth and altitude angles of the origin with respect to the microphone array of the device.
 
 In order to develop the TDOA analysis software, a set of Matlab \cite{matlab} scripts were written, which given the raw audio signal measurements, can calculate the azimuth and altitude angles of the sounds origin with respect to the microphone array. Essentially, in these scripts all of the signal analysis calculations that are needed to reach the project goals are implemented. These Matlab scripts will serve as a basis and a means of verification for the Rust implementation of the algorithm in firmware. Upon completion of the Matlab scripts and tweaking of parameters, the calculations have been re-implemented in Rust \cite{rust}, in order for the analysis to be done by the microcontroller on the nRF52840dk \cite{nrf52840-dk} board in real time. A simple command line application written in Rust that can communicate with the device and that converts raw microphone measurements to Matlab input files was developed as well.
 
-This project focuses solely on the implementation of the TDOA analysis, as well as its evaluation. In this project, a testing environment was set up. This environment consists of a simple firmware application that is able to sample microphone data, and communicate these samples with the command line application that records them. The firmware is also able to control the pan-tilt bracket. The environment having been set up, a Matlab script has been implemented that is able to do the TDOA analysis based on four sine waves with separate phase differences, but with the same frequencies. Once this Matlab script had finished, the TDOA analysis was re-implemented in firmware, so that it can be done with microphone samples in real time. With the this project done, Folley should be able to locate origins of prefedined sine wave sounds, coming from a waveform generator.
+This project focuses solely on the implementation of the TDOA analysis, as well as its evaluation. In this project, a testing environment was set up. This environment consists of a simple firmware application that is able to sample microphone data, and communicate these samples with the command line application that records them. The environment having been set up, a Matlab script has been implemented that is able to do the TDOA analysis based on four sine waves with separate phase differences, but with the same frequencies. Once this Matlab script had finished, the TDOA analysis was re-implemented in firmware, so that it can be done with microphone samples in real time. With the this project done, Folley should be able to locate origins of prefedined sine wave sounds, coming from a waveform generator, as well as recordings of real mosquito buzzing sound.
 
 
 \section{Problem specification}
 % A detailed and technical description of the problem you’re addressing.
-Flies and mosquitos emit a continuous buzzing sound in which certain frequencies and harmonics are present when flying around. This sound can be used to estimate the location of the insect. A device can use a set of microphones to analyze the sound signals as it is recorded by multiple microphones and obtain information about the location of the insect.
+Mosquitos emit a continuous buzzing sound in which certain frequencies and harmonics are present when flying around. This sound can be used to estimate the location of the insect. A device can use a set of microphones to analyze the sound signals as it is recorded by multiple microphones and obtain information about the location of the insect.
 
 As the insect moves, the sound will come from different angles from the device perspective. For both the x and y axis, the time of arrival of the buzzing sound can be used to calculate the angle from which it originated. In figure \ref{fig:problem_overview}, a schematic overview of the problem is given for a single axis. A sound source produces a sound. The origin is assumed to be infinitely far away, so the sound is moving in straight waves when it arrives at the microphone array. In this example, the sound hits microphone 2 before it hits microphone 1. Let $d$ be the distance travelled by the sound between the moment it hits microphone 2 and the moment it hits microphone 1 and $d_{mics}$ be the distance between the microphones. Then, a right triagle can be formed with a hypotenuse of length $d_{mics}$, one side of length $d$ and an angle $\theta$ between them. In order for $\theta$ to be calculated, the following equation is used:\[\theta = \arctan(\frac{d}{d_{mics}})\] $\theta$ equals the angle between the device and the sound origin. $\theta$ ranges from $0^{\circ}$ to $90^{\circ}$ to $180^{\circ}$ as the source is moved from the right, to the middle, towards the left of the array. 
 
 Given the delay $t_{delay}$ in time between the moment the sound hits microphone 1 ($t_1$) and the it hits moment microphone 2 ($t_2$), with $t_{delay} = t_1 - t_2$ $d$ can be derived as follows:\[d = t_{delay} \cdot V_{sound}\]where $V_{sound}$ is the speed of sound, $343\ m/s$
 
-The challenge for this project is to find $t_{delay}$ given just the raw microphone samples from ADC of the microcontroller. Also, a suitable value for $d_mics$ needs to be found in order for the device to be able to work with typical mosquito buzzing sound, keeping in mind its periodicity.
+The challenge for this project is to find $t_{delay}$ given just the raw microphone samples from ADC of the microcontroller. 
 
 \begin{figure}
     \begin{center}
@@ -56,9 +56,11 @@ The challenge for this project is to find $t_{delay}$ given just the raw microph
 
 To estimate $t_{delay}$, we can use cross-correlation of two signals. Using cross-correlation, the precense of one signal can be detected within another signal. It is a measure of similarity between two signals as one signal is delayed with respect to the other. For discrete signals, cross correlation between real-value signals $x$ and $y$ is defined as follows: \[(x \star y)[n] \triangleq \sum_{m = -\infty}^ {\infty} x[m]\cdot y[m + n]\] This yields a new signal, of which the $n$ corresponding the highest value is the delay between the signals for which they were most similar. Therefore, the delay between the signals $x$ and $y$ in terms of number of samples, $n_{delay}$ can be found with \[n_{delay} = \underset{n}{\mathrm{argmax}}\ (x \star y)[n]\] Given a fixed sample period $T_s$ used for both signals, $t_{delay}$ can be calculated with \[t_{delay} = n_{delay} \cdot T_s\]
 
-$t_{delay}$ has a maximum at $\theta = 180^{\circ}$ and a (negative) minimum at $\theta = 0^{\circ}$. Therefore, the calculations can be optimized by only calculating the cross correlation for a limited range of $n$. The upper limit of $n$, $n_{max}$, can be found by \[n_{max} = \frac{d_{mics}}{T_s \cdot V_{sound}}\] The minimum is found by $n_{min} = -n_{max}$. Given these limits, the length of the cross correlation signal can be reduced drastically:\[(x \star y)[n] \triangleq \sum_{m = n_{min}}^ {n_{max}} x[m]\cdot y[m + n]\] If the wave length $\lambda$ is no bigger than $d_{mics}$, using the limited cross correlation also makes the cross correlation suitable for periodic sigals: the signals will only optimally lined up for one value of $n$.
+$t_{delay}$ has a maximum at $\theta = 180^{\circ}$ and a (negative) minimum at $\theta = 0^{\circ}$. Therefore, the calculations can be optimized by only calculating the cross correlation for a limited range of $n$. The upper limit of $n$, $n_{max}$, can be found by \[n_{max} = \frac{d_{mics}}{T_s \cdot V_{sound}}\] The minimum is found by $n_{min} = -n_{max}$. Given these limits, the length of the cross correlation signal can be reduced drastically:\[(x \star y)[n] \triangleq \sum_{m = n_{min}}^ {n_{max}} x[m]\cdot y[m + n]\] 
 
-This completes the set of calculations needed to calculate $\theta$ given two signals. In this project, before calculations were implemented in order to find a suitable value for $d_{mics}$, and for the analysis to be done on-device in real time.
+If the wave length $\lambda$ is no bigger than $d_{mics}$, using the limited cross correlation also makes the cross correlation suitable for periodic sigals: the signals will only optimally lined up for one value of $n$. Therefore, a suitable value for $d_{mics}$ needs to be found in order for the device to be able to work with typical mosquito buzzing sound, keeping in mind its periodicity. This is done by analyzing the Fourier transform a mosquito buzzing sound fragment\cite{mosquito_fragment}, as from it can be obtained the sound's fundamental frequency $f_0$. With $f_0$ determined, $\lambda$, and therefore $d_{mics}$, can be found with \[\lambda = \frac{V_{sound}}{f_0}\]
+
+This completes the set of calculations needed to calculate $\theta$ given two signals. In this project, the before calculations were implemented in order to find a suitable value for $d_{mics}$, and for the analysis to be done on-device in real time.
 
 \section{Evaluation criteria}
 % How will you be able to determine if your project is successful? Try to find objective and quantitative metrics.
