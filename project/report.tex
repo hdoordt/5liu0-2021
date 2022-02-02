@@ -58,15 +58,13 @@ To estimate $t_{delay}$, we can use cross-correlation of two signals. Using cros
 
 $t_{delay}$ has a maximum at $\theta = 180^{\circ}$ and a (negative) minimum at $\theta = 0^{\circ}$. Therefore, the calculations can be optimized by only calculating the cross correlation for a limited range of $n$. The upper limit of $n$, $n_{max}$, can be found by \[n_{max} = \frac{d_{mics}}{T_s \cdot V_{sound}}\] The minimum is found by $n_{min} = -n_{max}$. Given these limits, the length of the cross correlation signal can be reduced drastically:\[(x \star y)[n] \triangleq \sum_{m = n_{min}}^ {n_{max}} x[m]\cdot y[m + n]\] 
 
-If the wave length $\lambda$ is no bigger than $d_{mics}$, using the limited cross correlation also makes the cross correlation suitable for periodic sigals: the signals will only optimally lined up for one value of $n$. Therefore, a suitable value for $d_{mics}$ needs to be found in order for the device to be able to work with typical mosquito buzzing sound, keeping in mind its periodicity. This is done by analyzing the Fourier transform a mosquito buzzing sound fragment\cite{mosquito_fragment}, as from it can be obtained the sound's fundamental frequency $f_0$. With $f_0$ determined, $\lambda$, and therefore $d_{mics}$, can be found with \[\lambda = \frac{V_{sound}}{f_0}\]
+If the wave length $\lambda$ is no greater than $d_{mics}$, using the limited cross correlation also makes the cross correlation suitable for periodic sigals: the signals will only optimally lined up for one value of $n$. Therefore, a suitable value for $d_{mics}$ needs to be found in order for the device to be able to work with typical mosquito buzzing sound, keeping in mind its periodicity. This is done by analyzing the Fourier transform a mosquito buzzing sound fragment\cite{mosquito_fragment}, as from it can be obtained the sound's fundamental frequency $f_0$. With $f_0$ determined, $\lambda$, and therefore $d_{mics}$, can be found with \[\lambda = \frac{V_{sound}}{f_0}\]
 
 This completes the set of calculations needed to calculate $\theta$ given two signals. In this project, the before calculations were implemented in order to find a suitable value for $d_{mics}$, and for the analysis to be done on-device in real time.
 
 \section{Evaluation criteria}
 % How will you be able to determine if your project is successful? Try to find objective and quantitative metrics.
-In order to indicate whether the project a success, the following goal is defined. The TDOA analysis is able to calculate the azimuth and altitude angles within a 10 degree error margin 80\% of the time, when presented with a predefined sine wave sound.
-
-As the accuracy of the pan-tilt servos is low, the accuracy of the actual laser pointer is not measured. Only the calculation outputs are benchmarked, both the Matlab script and the firmware implementation.
+In order to indicate whether the device can locate a mosquito successfully, the following goal is defined. Firmware should be able to calculate the azimuth angle of a sound origin within a 10 degree error margin 80\% of the time, when presented with a predefined sine wave as sound signal, as well as a real mosquito sound fragment.
 
 \section{Setup}
 % What are the signals (real, simulated or physical) that you will use for your project? What is the hardware and/or software setup that you have used?
