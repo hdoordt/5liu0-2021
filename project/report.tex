@@ -69,7 +69,7 @@ In order to indicate whether the device can locate a mosquito successfully, the 
 \section{Setup}
 % What are the signals (real, simulated or physical) that you will use for your project? What is the hardware and/or software setup that you have used?
 
-The device uses an array of four electret microphones, mounted in a `+'-shape. As can be seen in figure \ref{fig:mic_array_dimensions}, every two opposite microphones are 125mm apart. Using this setup, it becomes possible to esimate the angle from which the buzzing sound comes from in both the horizontal and vertical axis. 
+The device uses an array of four electret microphones, mounted in a `+'-shape. As can be seen in figure \ref{fig:mic_array_dimensions}, every two opposite microphones are $125\ mm$ apart. Using this setup, it becomes possible to esimate the angle from which the buzzing sound comes from in both the horizontal and vertical axis. In this project, however, only the analysis of a single axis is benchmarked, as the accuracy of the second axis is expected to be very similar because of $d_{mics}$ being equal for both axes.
 
 \begin{figure}
     \begin{center}
@@ -79,6 +79,9 @@ The device uses an array of four electret microphones, mounted in a `+'-shape. A
     \end{center}
 \end{figure}
 
+The device is controlled by a Nordic Semiconductor nRF52840 microcontroller, mounted on a nRF52840DK board, for which firmware is customly written in Rust \cite{rust}.  The nRF52840 microcontroller is able to sample up to 8 analog inputs. Having four analog input channels enabled, it is able to sample with a minimal sample period of $14\ \mu s$. The nRF52840dk board can also relatively easily be set up for serial communication over USB \cite{usb}, enabling running real-time analysis and graph plotting on a host computer for development ease. What's more, using defmt \cite{defmt}, data can be easily logged to the host device when attached to a debugger. This proves useful when obtaining TDOA analysis results from the device. 
+
+The actual signals the device has to deal with are the analog microphone output voltages, being amplified by an op-amp integrated in each microphone module. 
 
 \begin{enumerate}
     \item Microphone array set up
@@ -95,11 +98,17 @@ The device uses an array of four electret microphones, mounted in a `+'-shape. A
 \end{figure}
 
 
-The microphone array as well as the laser diode is mounted to a servo-powered pan-tilt bracket, which is being used to point the microphones and the laser diode in the direction of the origin of the sound given the TDOA analysis output. All of this is controlled by a Nordic Semiconductor nRF52840 microcontroller, mounted on a nRF52840DK board, for which firmware is to be customly written in Rust \cite{rust}. This microcontroller is able to sample up to 8 analog inputs, and can control the servo motors of the pan-tilt bracket using pulse-width modulation (PWM) \cite{GULYAEV20161529} with the help of a PCA9685 \cite{pca9685} PWM controller, significantly simplifying the control of the pan-tilt bracket positioning. The nRF52840dk board can also relatively easily be set up for serial communication over USB \cite{usb}, enabling running real-time analysis and graph plotting on a host computer for development ease.
-
-
 \section{Approach}
 % A detailed, technical description how you solved the problem.
+
+To find a suitable value for $d_{mics}$, a Fourier transform of a mosquito sound fragment \cite{mosquito_fragment} was done. In figure \ref{fig:mosquito_fourier}, a plot of this transform was done. From the figure, it can be concluded that the sound signal in the analyzed fragment has a base frequency of about $367$ Hz. Also, some strong harmonics can be found at $f_1 = 730\ Hz$ and $f_2 = 1102\ Hz$. The length of a full period is therefore determined as $\lambda = \frac{V_{sound}}{f_0} = \frac{343}{367} = 0.9\ m$. For our device to be able to work with this periodic mosquito sound, a value of $d_{mics} = 125\ mm$, which is significantly smaller than $\lambda$, is sufficient.
+
+\begin{figure}
+        \includegraphics[width=34em]{assets/mosquito_fourier.png}
+        \caption{Fourier transform of mosquito.mp3}
+        \label{fig:mosquito_fourier}
+    
+\end{figure}
 
 \begin{enumerate}
     \item Signal is periodic, therefore take into account that the delay is always less than 1 period. Output of cross-correlation is the number of samples the reference leads or lags the other microphones signal.
