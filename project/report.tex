@@ -2,6 +2,8 @@
 
 \usepackage[american]{babel}
 \usepackage{amssymb}
+\usepackage{array}
+\usepackage{tabularx}
 
 \usepackage{amsmath}
 \usepackage{url}
@@ -30,15 +32,15 @@ This project focuses solely on the implementation of the TDOA analysis, as well 
 
 \begin{enumerate}
     \item Flies emit sound in which certain frequencies and harmonics are contained. Set up is built keeping the wavelengths corresponding to these frequencies in mind.
-    \item 2x2 microphones: 1 pair for the horizontal axis (azimuth), the other for vertical axis (altitude). For each pair, one microphone is selected as reference. Signal is sent, and is received by both microphones. Signal-to-noise ratio must be good enough in order for the device to pick up the signals. As angle at which sound comes in differentiates, delay between signal incoming in microphone differs. 
-    \item Delay is measured by cross correlating the signals. Extra difficulty caused by the signal being periodic. 
+    \item 2x2 microphones: 1 pair for the horizontal axis (azimuth), the other for vertical axis (altitude). For each pair, one microphone is selected as reference. Signal is sent, and is received by both microphones. Signal-to-noise ratio must be good enough in order for the device to pick up the signals. As angle at which sound comes in differentiates, delay between signal incoming in microphone differs.
+    \item Delay is measured by cross correlating the signals. Extra difficulty caused by the signal being periodic.
 \end{enumerate}
 
 \section{Evaluation criteria}
 % How will you be able to determine if your project is successful? Try to find objective and quantitative metrics.
 In order to indicate whether the project a success, the following goal is defined. The TDOA analysis is able to calculate the azimuth and altitude angles within a 10 degree error margin 80\% of the time, when presented with a predefined sine wave sound.
 
-As the accuracy of the pan-tilt servos is low, the accuracy of the actual laser pointer is not measured. Only the calculation outputs are benchmarked, both the Matlab script and the firmware implementation. 
+As the accuracy of the pan-tilt servos is low, the accuracy of the actual laser pointer is not measured. Only the calculation outputs are benchmarked, both the Matlab script and the firmware implementation.
 
 \section{Setup}
 % What are the signals (real, simulated or physical) that you will use for your project? What is the hardware and/or software setup that you have used?
@@ -69,6 +71,9 @@ The microphone array as well as the laser diode is mounted to a servo-powered pa
     \item Same sound played from smartphone, as real-time analysis by device outputs the angles.
     \item graphs
 \end{enumerate}
+
+\input{tables.tex}
+
 
 \section{Conclusions}
 % (Short) What did you learn from doing the project? What solutions did you provide?
