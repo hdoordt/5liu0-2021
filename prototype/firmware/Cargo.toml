@@ -37,12 +37,20 @@ version = "0.14.0"
 features = ["rt"]
 
 [features]
+default = ["standalone"]
+
+# All functionality
 full = ["pan_tilt", "mic_array", "uart"]
+
+# Only send measurements to host
 measure = ["mic_array", "uart"]
+
+# Only control device from host
 control = ["pan_tilt", "uart"]
+
+# Working device without uart comms
 standalone = ["pan_tilt", "mic_array"]
 
-default = ["standalone"]
 
 pan_tilt = ["pwm-pca9685"]
 mic_array = []
