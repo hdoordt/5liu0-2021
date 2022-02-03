@@ -22,6 +22,8 @@ function [N, avg, ok_samples, pass_percentage, passed] = analyze_measurements(fi
     fprintf("Standard deviation:\t%g\n", round(std_dev, 2))
     fprintf("Percent within range:\t%g%%\n", round(pass_percentage, 2));
     fprintf("Pass:\t\t\t%s\n", passed)
+
+    % Conveniently print out the results as row of a LaTex table
     % file_basename & expected_angle & N & Avg & stddev & ok_samples & pass_percentage & test_passed
     fprintf("%s & %g & %d & %g & %g & %d & %g & %s \\\\\n",strrep(file_basename, '_', '\textunderscore '), expected_angle, N, round(avg,2), round(std_dev, 2), ok_samples, round(pass_percentage), passed);
 end
