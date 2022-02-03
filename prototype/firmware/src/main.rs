@@ -142,9 +142,9 @@ const APP: () = {
         #[cfg(feature = "mic_array")]
         let mic_array = {
             use embedded_hal::timer::CountDown;
+            use hal::gpiote::Gpiote;
             use hal::saadc::{Gain, Oversample, Resistor, Resolution, SaadcConfig, Time};
             use hal::timer::Timer;
-            use hal::gpiote::Gpiote;
 
             let mic_pins = MicArrayPins {
                 mic1: port0.p0_03,
@@ -156,7 +156,7 @@ const APP: () = {
                 resolution: Resolution::_12BIT,
                 oversample: Oversample::BYPASS,
                 resistor: Resistor::PULLDOWN,
-                gain: Gain::GAIN1_4,
+                gain: Gain::GAIN1_3,
                 time: Time::_5US,
                 ..SaadcConfig::default()
             };
@@ -334,13 +334,16 @@ const APP: () = {
             let channels = {
                 let samples = mic_array.get_newest_samples();
 
-                for c in samples.chunks(SAMPLE_BUF_SIZE) {
-                    let msg = DeviceToServer::Samples(c.try_into().unwrap());
-                    ctx.spawn.send_message(DeviceToServer::Sync).ok();
-                    if let Err(_) = ctx.spawn.send_message(msg) {
-                        defmt::warn!("Error spawning send_message task");
+                #[cfg(feature = "uart")]
+                {
+                    for c in samples.chunks(SAMPLE_BUF_SIZE) {
+                        let msg = DeviceToServer::Samples(c.try_into().unwrap());
+                        ctx.spawn.send_message(DeviceToServer::Sync).ok();
+                        if let Err(_) = ctx.spawn.send_message(msg) {
+                            defmt::warn!("Error spawning send_message task");
+                        }
+                        ctx.spawn.send_message(DeviceToServer::Sync).ok();
                     }
-                    ctx.spawn.send_message(DeviceToServer::Sync).ok();
                 }
                 Channels::<SAMPLE_BUF_SIZE>::from_samples((*samples).try_into().unwrap())
             };
@@ -376,7 +379,6 @@ const APP: () = {
                 defmt::error!("Could not spawn move_bracket task");
             }
 
-            #[cfg(not(feature = "pan_tilt"))]
             if let Err(_) = ctx.spawn.start_sampling() {
                 defmt::error!("Could not spawn start_sampling task");
             }
@@ -392,10 +394,6 @@ const APP: () = {
                 pan_tilt.pan_with_deg(pan_offset);
                 pan_tilt.tilt_with_deg(tilt_offset);
             });
-
-            if let Err(_) = ctx.spawn.start_sampling() {
-                defmt::error!("Could not spawn start_sampling task");
-            }
         }
     }
 
