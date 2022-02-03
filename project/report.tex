@@ -287,7 +287,7 @@ The actual evaluation test is done by placing the microphone array next to a spe
 \section{Results and Analysis}
 % Evaluation of the results using the defined criteria and a reflection on the outcomes, explanations for shortcomings, ideas for improvements.
 
-The results of the evaluation are shown in the tables below. In table \ref{tab:results_baseline}, the results for the baseline measurement without any sound are shown. In the table, the value of N is the amount of calculation outputs that were analyzed. In other words, the device took N times 1024 samples from the horizontal microphones, cross correlated the signals, and calculated the corrresponding angle from it. Without any sound playing, the device detects an angle of $90^{\circ}$ with a standard deviation of $0$. As there was no expected angle, data on passing the test was recorded.
+The results of the evaluation are shown in the tables below. In table \ref{tab:results_baseline}, the results for the baseline measurement without any sound are shown. In the table, the value of N is the amount of calculation outputs that were analyzed, 101. In other words, the device took N times 1024 samples from the horizontal microphones, cross correlated the signals, and calculated the corrresponding angle from it. Without any sound playing, the device detects an angle of $90^{\circ}$ with a standard deviation of $0$. As there was no expected angle, data on passing the test was recorded.
 
 % baseline
 \begin{table}[H]
@@ -359,7 +359,7 @@ Table \ref{tab:results_mosquito} lists the results of analyzing the mosquito sou
 
 \section{Conclusions}
 % (Short) What did you learn from doing the project? What solutions did you provide?
-
+In project `Folley', a device that analyzes mosquito buzzing noises and estimates the angle from which the sound comes was implemented. The core of the estimation procedure is cross correlation of the signals obtained by the device's microphone array. Controlled by an nRF52840 microcontroller, the device uses a Rust-written implementation of the Time Delay angle-Of-Arrival analysis used to obtain signal delay, from which the sounds angle of arrival can be derived. In order for the analysis algorithm to be implemented and verified, a command line application that can receive and store raw measurements from the device, as well as a Matlab implementation of the analysis has been implemented. After implementing the device firmware as well as the analysis algorithm, the device analysis was tested by playing sounds from diffrent angles and comparing the analysis output of the device with the expected output. Unfortunately, the device output does not meet the evaluation criterium. However, the output is remarkably consistent, especially for sounds coming from the front of the device.
 
 \bibliographystyle{plain}
 \bibliography{references}
