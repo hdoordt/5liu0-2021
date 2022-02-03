@@ -234,7 +234,7 @@ Listing \ref{list:on_samples} is an excerpt of the \newline\rust{folley_firmware
     \label{list:defmt_output}
 \end{listing}
 
-The actual evaluation test is done by placing the microphone array next to a speaker at a distance of about $50\ cm$, as can be seen in figure \ref{fig:test_setup}. The speaker is placed at angles of $\theta = 0^{\circ}$, $\theta = 45^{\circ}$, $\theta = 90^{\circ}$, $\theta = 135^{\circ}$, and $\theta = 180^{\circ}$ from the horizontal microphone array. At each angle, the mosquito buzzing sound sample used in the Fourier analysis in section 4 is played from the speaker, as well as a sine wave noise of 1100Hz. The resulting log files are then analyzed in the Matlab function shown in listing \ref{list:analyze_measurements}. To it is passed the file name to analyze, as well as the angle $\theta$ at which the speaker was placed. The function calculates and prints the number of calculation outputs in the file, the average estimated angle, the standard deviation of the output, the amount and percentage of values that were within a $10^{\circ}$ margin from the expected angle, and whether the test was passed for the current list of outputs. The values obtained from this analysis are discussed in the next chapter.
+The actual evaluation test is done by placing the microphone array next to a speaker at a distance of about $50\ cm$, as can be seen in figure \ref{fig:test_setup}. The speaker is placed at angles of $\theta = 0^{\circ}$, $\theta = 45^{\circ}$, $\theta = 90^{\circ}$, $\theta = 135^{\circ}$, and $\theta = 180^{\circ}$ from the horizontal microphone array. At each angle, the mosquito buzzing sound sample used in the Fourier analysis in section 4 is played from the speaker, as well as a sine wave noise of 1100Hz. The resulting log files are then analyzed in the Matlab function shown in listing \ref{list:analyze_measurements}. To it is passed the file name to analyze, as well as the angle $\theta$ at which the speaker was placed. The function calculates and prints the number of calculation outputs in the file, the average estimated angle, the standard deviation of the output, the amount and percentage of values that were within a $10^{\circ}$ margin from the expected angle, and whether the test was passed for the current list of outputs. As a baseline, a set of ouputs is analyzed with the speaker off as well. The values obtained from this analysis are discussed in the next chapter.
 
 \begin{figure}[H]
     \begin{center}
@@ -286,14 +286,75 @@ The actual evaluation test is done by placing the microphone array next to a spe
     
 \section{Results and Analysis}
 % Evaluation of the results using the defined criteria and a reflection on the outcomes, explanations for shortcomings, ideas for improvements.
-\begin{enumerate}
 
-    \item Sound used in analysis played from smartphone at various angles multiple times. Measurements recorded, fed into matlab scripts and CLI. Output and error noted
-    \item Same sound played from smartphone, as real-time analysis by device outputs the angles.
-    \item graphs
-\end{enumerate}
+The results of the evaluation are shown in the tables below. In table \ref{tab:results_baseline}, the results for the baseline measurement without any sound are shown. In the table, the value of N is the amount of calculation outputs that were analyzed. In other words, the device took N times 1024 samples from the horizontal microphones, cross correlated the signals, and calculated the corrresponding angle from it. Without any sound playing, the device detects an angle of $90^{\circ}$ with a standard deviation of $0$. As there was no expected angle, data on passing the test was recorded.
 
-\input{tables.tex}
+% baseline
+\begin{table}[H]
+    \begin{center}
+        \begin{tabular}{ | m{5em} | m{2em} | m{3.5em} | m{3.5em} | }
+            \hline
+            File name    & N   & Average ($^{\circ}$) & Standard deviation \\
+            \hline
+            \hline
+            baseline.txt & 101 & 90                   & 0                  \\
+            \hline
+        \end{tabular}
+        \caption{Results from testing with 1100Hz sine wave signal.}
+        \label{tab:results_baseline}
+    \end{center}
+\end{table}
+
+In table \ref{tab:results_sine1100hz}, the results of analyzing the $1100\ Hz$ sine wave are shown. Only at angles $\theta = 45^{\circ}$ and $\theta = 90^{\circ}$, the test passes. For the other angles, the pass percentage is $0 \%$, meaning none of the outputs were within $10^{\circ}$ of the expected angle. The standard deviation is $0$ or almost $0$ for all angles, meaning that the calculations done by the device are consistent when presented a sine wave of $1100\ Hz$. Overall, however, the device does not meet the evaluation criteria.
+
+% sine_1100hz
+\begin{table}[H]
+    \begin{center}
+        \begin{tabular}{ | m{5em} | m{4em}| m{2em} | m{3.5em} | m{3.5em} | m{3.5em} | m{3.5em} | m{2.5em} | }
+            \hline
+            File name                  & Expected angle ($^{\circ}$) & N   & Average ($^{\circ}$) & Standard deviation & Passed samples & Pass percentage & Test passed \\
+            \hline
+            \hline
+            0\textunderscore deg.txt   & 0                           & 101 & 24                   & 0                  & 0              & 0 \%            & false       \\
+            \hline
+            45\textunderscore deg.txt  & 45                          & 101 & 53                   & 0                  & 101            & 100 \%          & true        \\
+            \hline
+            90\textunderscore deg.txt  & 90                          & 101 & 90                   & 0                  & 101            & 100 \%          & true        \\
+            \hline
+            135\textunderscore deg.txt & 135                         & 101 & 114.42               & 1.66               & 0              & 0 \%            & false       \\
+            \hline
+            180\textunderscore deg.txt & 180                         & 101 & 156                  & 0                  & 0              & 0 \%            & false       \\
+            \hline
+        \end{tabular}
+        \caption{Results from testing with 1100Hz sine wave signal.}
+        \label{tab:results_sine1100hz}
+    \end{center}
+\end{table}
+
+Table \ref{tab:results_mosquito} lists the results of analyzing the mosquito sound. Again, only two angles are estimated sufficiently, and the evaluation criteria are not met. We can see that the sandard deviation for the mosquito sounds are high at the extreme values for $\theta$, but goes to zero as $\theta$ comes closer to $90^{\circ}$.
+
+% mosquito
+\begin{table}[H]
+    \begin{center}
+        \begin{tabular}{ | m{5em} | m{4em}| m{2em} | m{3.5em} | m{3.5em} | m{3.5em} | m{3.5em} | m{2.5em} | }
+            \hline
+            File name                  & Expected angle ($^{\circ}$) & N   & Average ($^{\circ}$) & Standard deviation & Passed samples & Pass percentage & Test passed \\
+            \hline
+            \hline
+            0\textunderscore deg.txt   & 0                           & 101 & 32.07                & 20.21              & 0              & 0 \%            & false       \\
+            \hline
+            45\textunderscore deg.txt  & 45                          & 101 & 56.29                & 8.24               & 75             & 74 \%           & false       \\
+            \hline
+            90\textunderscore deg.txt  & 90                          & 101 & 90                   & 0                  & 101            & 100 \%          & true        \\
+            \hline
+            135\textunderscore deg.txt & 135                         & 101 & 128.72               & 11.03              & 91             & 90 \%           & true        \\
+            \hline
+            180\textunderscore deg.txt & 180                         & 101 & 146                  & 22.81              & 0              & 0 \%            & false       \\
+            \hline
+        \end{tabular}
+        \caption{\label{tab:results_mosquito}Results from testing with mosquito sound.}
+    \end{center}
+\end{table}
 
 
 \section{Conclusions}
