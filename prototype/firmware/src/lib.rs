@@ -9,11 +9,15 @@ use panic_probe as _;
 pub mod consts {
     use folley_calc::max_lags_size;
 
+    /// Sample period in microseconds
     pub const T_S_US: u32 = 37;
+    /// Distance between two mics in millimeters
     pub const D_MICS_MM: u32 = 125;
 
+    /// Size of a set of samples
     pub const SAMPLE_BUF_SIZE: usize = 1024;
-    pub const MAX_LAG: usize = max_lags_size(T_S_US, D_MICS_MM);
+    /// Amount of lags evaluated in the cross correlation
+    pub const XCORR_LEN: usize = max_lags_size(T_S_US, D_MICS_MM);
 }
 
 #[cfg(feature = "mic_array")]

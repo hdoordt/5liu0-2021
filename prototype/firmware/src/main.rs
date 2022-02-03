@@ -65,7 +65,7 @@ const APP: () = {
         #[cfg(feature = "pan_tilt")]
         timer1: hal::Timer<TIMER1, hal::timer::Periodic>,
         #[cfg(feature = "mic_array")]
-        lag_table: [u32; MAX_LAG],
+        lag_table: [u32; XCORR_LEN],
     }
 
     // Initialize peripherals, before interrupts are unmasked
@@ -197,7 +197,7 @@ const APP: () = {
             #[cfg(feature = "pan_tilt")]
             timer1,
             #[cfg(feature = "mic_array")]
-            lag_table: folley_calc::gen_lag_table::<T_S_US, D_MICS_MM, MAX_LAG>(),
+            lag_table: folley_calc::gen_lag_table::<T_S_US, D_MICS_MM, XCORR_LEN>(),
         }
     }
 
@@ -359,14 +359,14 @@ const APP: () = {
     fn on_samples(ctx: on_samples::Context, channels: Channels<SAMPLE_BUF_SIZE>) {
         #[cfg(feature = "mic_array")]
         {
-            let mut buf = [0i64; MAX_LAG];
-            let x_angle = folley_calc::calc_angle::<T_S_US, D_MICS_MM, MAX_LAG, SAMPLE_BUF_SIZE>(
+            let mut buf = [0i64; XCORR_LEN];
+            let x_angle = folley_calc::calc_angle::<T_S_US, D_MICS_MM, XCORR_LEN, SAMPLE_BUF_SIZE>(
                 &channels.ch1,
                 &channels.ch2,
                 &mut buf,
                 ctx.resources.lag_table,
             ) as i32;
-            let y_angle = folley_calc::calc_angle::<T_S_US, D_MICS_MM, MAX_LAG, SAMPLE_BUF_SIZE>(
+            let y_angle = folley_calc::calc_angle::<T_S_US, D_MICS_MM, XCORR_LEN, SAMPLE_BUF_SIZE>(
                 &channels.ch3,
                 &channels.ch4,
                 &mut buf,

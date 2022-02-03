@@ -8,6 +8,7 @@ target
 .vscode/*.gdb
 
 # LaTeX
+project/_minted-report
 *.pdf
 *.gz
 *.aux
