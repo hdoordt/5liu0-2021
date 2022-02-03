@@ -91,7 +91,7 @@ pub fn gen_lag_table<const T_S_US: u32, const D_MICS_MM: u32, const SIZE: usize>
 }
 
 /// Given the distance between two microphones in millimeters, the sample period in microseconds,
-/// and the speed of sound in m/s, calculates the maximum number of samples possible between 
+/// and the speed of sound in m/s, calculates the maximum number of samples possible between
 /// the moment the signal hits the first microphone and the moment it reaches the second.
 pub const fn max_lags_size(sample_period_us: u32, mic_distance_mm: u32) -> usize {
     (mic_distance_mm * 1000 / (sample_period_us * V_SOUND as u32)) as usize * 2 + 1
@@ -179,19 +179,18 @@ mod test {
         const M: usize = 10;
         const N: usize = 2 * M - 1;
 
-        const EXPECTED: [u32; N] = [
-            2653233, 5429466, 8293409, 11057978, 13463163, 15577371, 17567748, 19514665, 21620069,
-            24154372, 21615116, 18974750, 16217227, 13470869, 10999032, 8760016, 6633330, 4574504,
-            2452032,
+        const EXPECTED: [i64; N] = [
+            -38192, -78724, -49321, 24901, 87948, 159501, 168362, 80307, -28044, -148461, -192540,
+            -134940, -52434, 9653, 71414, 66513, 39441, 21076, -6440,
         ];
 
         let samples: [_; M] = read_samples::<M>().try_into().unwrap();
         let channels = Channels::from_samples(samples);
 
-        let mut out = [0u32; N];
+        let mut out = [0i64; N];
         xcorr_real(&channels.ch1, &channels.ch2, &mut out);
 
-        let _: Vec<_> = (0..M).map(|i| assert_eq!(out[i], EXPECTED[i])).collect();
+        (0..N).for_each(|i| assert_eq!(out[i], EXPECTED[i]));
     }
 
     #[test]
@@ -200,22 +199,21 @@ mod test {
         const N: usize = 2 * M - 1;
         let samples: [_; M] = read_samples::<M>().try_into().unwrap();
         let channels = Channels::from_samples(samples);
-        let mut buf = [0u32; N];
+        let mut buf = [0i64; N];
         let lag = calc_lag(&channels.ch1, &channels.ch2, &mut buf);
-        assert_eq!(lag, 3);
+        assert_eq!(lag, -4);
     }
 
     #[test]
     pub fn test_calc_angle() {
         const M: usize = 1024;
-        const N: usize = 2 * M - 1;
+        const N: usize = 9;
         let samples: [_; M] = read_samples::<M>().try_into().unwrap();
         let channels = Channels::from_samples(samples);
-        let mut buf = [0u32; N];
-        let lag_table = gen_lag_table::<74, 125, 9>();
-        let theta =
-            calc_angle::<74, 125, N, M, 9>(&channels.ch1, &channels.ch2, &mut buf, &lag_table);
-        assert_eq!(theta, 53);
+        let mut buf = [0i64; N];
+        let lag_table = gen_lag_table::<74, 125, N>();
+        let theta = calc_angle::<74, 125, N, M>(&channels.ch1, &channels.ch2, &mut buf, &lag_table);
+        assert_eq!(theta, 145);
     }
 
     #[test]
@@ -278,15 +276,6 @@ mod test {
         let lag_table = gen_lag_table::<14, 125, 53>();
         FLOORED_LAG_ANGLES.iter().for_each(|(lag, angle)| {
             assert_eq!(lag_to_angle::<14, 125, 53>(*lag, &lag_table), *angle)
-        });
-    }
-
-    #[test]
-    fn test_reduce_lag() {
-        const K: usize = max_lags_size(14, 125);
-        const LAGS: [(i32, i32); 4] = [(-27, 25), (26, 26), (-26, -26), (27, -25)];
-        LAGS.iter().for_each(|(lag, ref expected)| {
-            assert_eq!(reduce_lag::<K>(*lag), *expected);
         });
     }
 }
