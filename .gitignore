@@ -9,14 +9,14 @@ target
 
 # LaTeX
 project/_minted-report
-*.pdf
-*.gz
-*.aux
-*.log
-*.fls
-*.fdb_latexmk
-*.bbl
-*.blg
+project/*.pdf
+project/*.gz
+project/*.aux
+project/*.log
+project/*.fls
+project/*.fdb_latexmk
+project/*.bbl
+project/*.blg
 
 # Measurement output
 *.csv
